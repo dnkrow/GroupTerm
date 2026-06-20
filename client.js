@@ -5,6 +5,7 @@ const chalk = require('chalk');
 
 const SERVER = process.env.SERVER || 'ws://localhost:4242';
 const NAME = process.env.NAME || process.argv[2] || 'anonyme';
+const ROOM = process.env.ROOM || process.argv[3] || 'default';
 const ROLE = process.env.ROLE || 'human';
 const SHELL = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
@@ -47,7 +48,7 @@ function connect() {
   ws = new WebSocket(SERVER);
 
   ws.on('open', () => {
-    send('register', { name: NAME, role: ROLE });
+    send('register', { name: NAME, role: ROLE, room: ROOM });
   });
 
   ws.on('message', (raw) => {
@@ -127,7 +128,7 @@ function startInput() {
   });
 }
 
-console.log(chalk.blue(`Group Terminal - ${NAME} (${ROLE})`));
+console.log(chalk.blue(`Group Terminal - ${NAME} (${ROLE}) dans #${ROOM}`));
 console.log(chalk.blue(`Serveur : ${SERVER}`));
 console.log(chalk.gray('Tape /help pour la liste des commandes.\n'));
 

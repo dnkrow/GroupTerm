@@ -6,10 +6,16 @@
   "scripts": {
     "start": "node server.js",
     "client": "node client.js",
-    "ai": "node ai-agent.js"
+    "client:tui": "node client-tui.js",
+    "ai": "node ai-agent.js",
+    "test": "node test-integration.js && node test-ai.js",
+    "test:tui": "node test-tui.js"
   },
   "dependencies": {
+    "blessed": "^0.1.81",
     "chalk": "4.1.2",
+    "node-pty": "^1.1.0",
+    "term.js": "^0.0.7",
     "ws": "8.16.0"
   },
   "engines": {

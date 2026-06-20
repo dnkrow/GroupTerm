@@ -3,23 +3,28 @@ const { exec } = require('child_process');
 const chalk = require('chalk');
 
 const SERVER = 'ws://localhost:4242';
+const ROOM = 'test-ai-room';
 const SHELL = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
-function createClient(name, role, onMessage) {
-  return new Promise((resolve) => {
+function createClient(name, role, room = ROOM, onMessage) {
+  return new Promise((resolve, reject) => {
     const ws = new WebSocket(SERVER);
     const messages = [];
 
     ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'register', name, role }));
-      resolve({ ws, messages, waitFor });
+      ws.send(JSON.stringify({ type: 'register', name, role, room }));
     });
 
     ws.on('message', (raw) => {
       const msg = JSON.parse(raw.toString());
       messages.push(msg);
+      if (msg.type === 'system' && msg.text.includes('Bienvenue')) {
+        resolve({ ws, messages, waitFor });
+      }
       if (onMessage) onMessage(ws, msg);
     });
+
+    ws.on('error', reject);
 
     function waitFor(predicate, timeoutMs = 3000) {
       const fn = typeof predicate === 'string' ? (m) => m.type === predicate : predicate;
@@ -47,13 +52,16 @@ function createClient(name, role, onMessage) {
 
 async function run() {
   console.log(chalk.blue('Test agent IA'));
+  const suffix = Date.now();
+  const humanName = `human-${suffix}`;
 
   // Client humain
-  const alice = await createClient('alice', 'human');
+  console.log(chalk.gray(`Connexion ${humanName}...`));
+  const alice = await createClient(humanName, 'human');
+  // Client IA simulé
+  const botName = `helper-bot-${suffix}`;
+  const bot = await createClient(botName, 'ai', ROOM, (ws, msg) => {
 
-  // Client IA simulé (même comportement que ai-agent.js)
-  const botName = 'helper-bot';
-  const bot = await createClient(botName, 'ai', (ws, msg) => {
     if (msg.type === 'chat' && msg.from !== botName) {
       const mention = `@${botName}`;
       if (msg.text.includes(mention) && msg.text.toLowerCase().includes('branche')) {
@@ -67,9 +75,8 @@ async function run() {
 
   await new Promise(r => setTimeout(r, 300));
 
-  // alice mentionne l'IA
+  // Le humain mentionne l'IA
   alice.ws.send(JSON.stringify({ type: 'chat', text: `@${botName} sur quelle branche tu es ?` }));
-
   const reply = await alice.waitFor(m => m.type === 'chat' && m.from === botName);
   console.log(chalk.gray('Réponse IA :'), reply.text);
   console.assert(reply.text.includes('branche'), 'L\'IA doit répondre avec sa branche');

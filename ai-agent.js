@@ -4,6 +4,7 @@ const chalk = require('chalk');
 
 const SERVER = process.env.SERVER || 'ws://localhost:4242';
 const NAME = process.env.NAME || process.argv[2] || 'assistant';
+const ROOM = process.env.ROOM || process.argv[3] || 'default';
 const ROLE = 'ai';
 const SHELL = process.platform === 'win32' ? 'powershell.exe' : 'bash';
 
@@ -50,8 +51,8 @@ function connect() {
   ws = new WebSocket(SERVER);
 
   ws.on('open', () => {
-    send('register', { name: NAME, role: ROLE });
-    send('chat', { text: `👋 ${NAME} est connecté(e) et observe.` });
+    send('register', { name: NAME, role: ROLE, room: ROOM });
+    send('chat', { text: `👋 ${NAME} est connecté(e) et observe dans #${ROOM}.` });
   });
 
   ws.on('message', (raw) => {
@@ -82,5 +83,5 @@ function connect() {
   });
 }
 
-console.log(chalk.cyan(`Agent IA ${NAME} démarré. En attente de connexion...`));
+console.log(chalk.cyan(`Agent IA ${NAME} dans #${ROOM}. En attente de connexion...`));
 connect();

@@ -1,6 +1,6 @@
 # Group Terminal 🖥️👥🤖
 
-Un terminal partagé en temps réel pour travailler à plusieurs sur le même projet, avec un chat intégré où les IA peuvent observer, échanger et répondre.
+Un terminal partagé en temps réel pour travailler à plusieurs sur le même projet, avec un chat intégré où les IA peuvent observer et échanger.
 
 ## Concept
 
@@ -20,7 +20,7 @@ Group Terminal relie tous les terminaux via WebSocket et diffuse :
 npm install
 ```
 
-## Lancement
+## Lancement rapide
 
 ### 1. Démarrer le serveur
 
@@ -30,31 +30,47 @@ npm start
 
 Par défaut le serveur écoute sur `ws://localhost:4242`.
 
-### 2. Se connecter en tant qu'humain
+### 2. Se connecter avec le client TUI (recommandé)
 
-Dans un autre terminal :
+Dans un vrai terminal (pas un pipe) :
 
 ```bash
-npm run client -- alice
-# ou
-NAME=alice npm run client
+# Alice
+npm run client:tui -- alice ma-room
+
+# Bob (dans un autre terminal)
+npm run client:tui -- bob ma-room
 ```
 
-Dans un troisième terminal :
+Le client TUI affiche :
+- en haut : ton vrai shell PowerShell/Bash interactif (node-pty),
+- en bas : le chat + l'activité de l'autre.
+
+**Raccourcis :**
+- `Tab` : passer en mode chat / revenir au terminal
+- `Entrée` (en mode chat) : envoyer le message
+- `Esc` (en mode chat) : annuler
+- `Ctrl+C` : quitter
+
+### 3. Client simple (fallback sans TUI)
+
+Si le TUI ne marche pas dans ton environnement :
 
 ```bash
-npm run client -- bob
+npm run client -- alice ma-room
 ```
 
-### 3. Connecter une IA
+C'est un client readline + exec : moins interactif mais fonctionne partout.
+
+### 4. Connecter une IA
 
 ```bash
-npm run ai -- alice-bot
-# ou
-NAME=alice-bot npm run ai
+npm run ai -- alice-bot ma-room
 ```
 
 ## Commandes disponibles
+
+Dans le chat (client TUI ou client simple) :
 
 | Commande | Description |
 |----------|-------------|
@@ -63,6 +79,8 @@ NAME=alice-bot npm run ai
 | `/who` | Liste des participants connectés |
 | `/help` | Afficher l'aide |
 | `/quit` | Quitter |
+
+Un message simple (sans `/`) est aussi envoyé dans le chat.
 
 ## Interactions IA
 
@@ -76,37 +94,54 @@ Dans le chat, un message contenant `@<nom-de-l-ia>` déclenche une réponse de l
 
 L'IA exécute la commande correspondante **sur son propre poste** et répond dans le chat.
 
+## Rooms / canaux
+
+Chaque groupe a sa propre room. Les messages et l'historique sont isolés par room.
+
+```bash
+npm run client:tui -- alice projet-secret
+npm run ai -- bot-projet projet-secret
+```
+
+Quand tu rejoins une room, tu récupères automatiquement :
+- les derniers messages de chat,
+- les dernières sorties de terminal des participants.
+
 ## Architecture
 
 ```
-┌─────────────┐      WebSocket       ┌─────────────┐
-│   alice     │◄────────────────────►│   serveur   │
-│  (humain)   │                      │  (relai)    │
-└─────────────┘                      └──────┬──────┘
-                                            │
-┌─────────────┐      WebSocket             │
-│    bob      │◄───────────────────────────┤
-│  (humain)   │                            │
-└─────────────┘                            │
-                                           │
-┌─────────────┐      WebSocket             │
-│  alice-bot  │◄───────────────────────────┘
-│    (IA)     │
-└─────────────┘
+                    WebSocket
+   alice ───────┐              ┌─────── bob
+  (client TUI)   │              │  (client TUI)
+                 │◄────────────►│
+   alice-bot ────┤   serveur    ├────── bob-bot
+      (IA)       │   (relai)    │      (IA)
+                 │              │
+                 └──────────────┘
+                 rooms + historique
+```
+
+## Tests
+
+```bash
+# Tests fonctionnels (serveur doit être démarré)
+npm test
+
+# Test du client TUI dans un pseudo-terminal (serveur doit être démarré)
+npm run test:tui
 ```
 
 ## Limitations actuelles (MVP)
 
-- Le client utilise `readline` + `exec` : on a un shell simplifié, pas un vrai terminal interactif avec flèches/tabulation.
-- Les commandes `cd` ne persistent pas d'une ligne à l'autre.
+- Le client TUI affiche le shell local dans un `blessed.box` : les commandes fonctionnent, mais le rendu ANSI/couleurs/curseur est basique.
 - Pas de chiffrement : tout passe en clair sur WebSocket (`ws://`).
 - Pas d'authentification.
 
 ## Prochaines étapes possibles
 
-- Vrai shell interactif avec `node-pty` et une TUI (`ink` ou `blessed`).
+- Vrai émulateur de terminal dans le client TUI (xterm.js ou blessed.terminal bien intégré).
 - Mode "observeur" passif pour les IA.
-- Historique de chat persistant.
 - Authentification par token.
 - Transport chiffré (`wss://`).
 - Canal privé entre deux participants.
+- Partage de fichiers / snippets.

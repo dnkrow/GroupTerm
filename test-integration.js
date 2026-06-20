@@ -2,45 +2,47 @@ const WebSocket = require('ws');
 const chalk = require('chalk');
 
 const SERVER = 'ws://localhost:4242';
+const ROOM = 'test-room';
 
-function createClient(name, role) {
-  return new Promise((resolve) => {
+function createClient(name, role, room = ROOM) {
+  return new Promise((resolve, reject) => {
     const ws = new WebSocket(SERVER);
     const messages = [];
+    let registered = false;
 
     ws.on('open', () => {
-      ws.send(JSON.stringify({ type: 'register', name, role }));
-      resolve({ ws, messages, waitFor });
+      ws.send(JSON.stringify({ type: 'register', name, role, room }));
     });
 
     ws.on('message', (raw) => {
       const msg = JSON.parse(raw.toString());
       messages.push(msg);
-      console.log(chalk.gray(`[${name}] reçu :`), msg.type, msg.from || '', msg.text || msg.data || '');
+      if (msg.type === 'system' && msg.text.includes('Bienvenue')) {
+        registered = true;
+        resolve({ ws, messages, waitFor, registered: () => registered });
+      }
     });
 
-    function waitFor(predicate, timeoutMs = 2000) {
-      return new Promise((resolveWait, reject) => {
-        const fn = typeof predicate === 'string'
-          ? (m) => m.type === predicate
-          : predicate;
+    ws.on('error', reject);
 
-        const check = () => messages.find(fn);
-        const found = check();
+    function waitFor(predicate, timeoutMs = 2000) {
+      const fn = typeof predicate === 'string' ? (m) => m.type === predicate : predicate;
+      return new Promise((resolveWait, rejectWait) => {
+        const found = messages.find(fn);
         if (found) return resolveWait(found);
 
         const interval = setInterval(() => {
-          const foundNow = check();
-          if (foundNow) {
+          const f = messages.find(fn);
+          if (f) {
             clearInterval(interval);
             clearTimeout(timer);
-            resolveWait(foundNow);
+            resolveWait(f);
           }
         }, 100);
 
         const timer = setTimeout(() => {
           clearInterval(interval);
-          reject(new Error(`Timeout en attendant message`));
+          rejectWait(new Error(`Timeout en attendant message`));
         }, timeoutMs);
       });
     }
@@ -51,9 +53,9 @@ async function run() {
   console.log(chalk.blue('Test d\'intégration group-terminal'));
 
   const alice = await createClient('alice', 'human');
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 100));
   const bob = await createClient('bob', 'human');
-  await new Promise(r => setTimeout(r, 300));
+  await new Promise(r => setTimeout(r, 100));
 
   // Test chat
   alice.ws.send(JSON.stringify({ type: 'chat', text: 'Salut Bob !' }));
@@ -81,10 +83,34 @@ async function run() {
   console.assert(whoMsg.text.includes('alice') && whoMsg.text.includes('bob'), '/who doit lister alice et bob');
   console.log(chalk.green('✓ /who fonctionne'));
 
+  // Test isolation de room : charlie dans une autre room ne doit pas recevoir le chat
+  const charlie = await createClient('charlie', 'human', 'autre-room');
+  await new Promise(r => setTimeout(r, 100));
+  alice.ws.send(JSON.stringify({ type: 'chat', text: 'Message secret' }));
+
+  let charlieReceived = false;
+  try {
+    await charlie.waitFor(m => m.type === 'chat' && m.text === 'Message secret', 500);
+    charlieReceived = true;
+  } catch {
+    charlieReceived = false;
+  }
+  console.assert(charlieReceived === false, 'charlie ne doit pas recevoir les messages d\'une autre room');
+  console.log(chalk.green('✓ Rooms isolées'));
+
+  // Test historique : dave rejoint la room et doit recevoir l'historique
+  const dave = await createClient('dave', 'human');
+  const historyMsg = await dave.waitFor('history');
+  console.assert(historyMsg.kind === 'chat', 'L\'historique doit être du chat');
+  console.assert(historyMsg.items.some(i => i.text === 'Salut Bob !'), 'L\'historique doit contenir le message');
+  console.log(chalk.green('✓ Historique envoyé aux nouveaux arrivants'));
+
   console.log(chalk.green('\nTous les tests sont passés !'));
 
   alice.ws.close();
   bob.ws.close();
+  charlie.ws.close();
+  dave.ws.close();
   process.exit(0);
 }
 
