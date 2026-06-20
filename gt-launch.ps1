@@ -45,10 +45,13 @@ if (-not $name -or -not $room -or -not $server -or $setup) {
 Write-Host "GroupTerm : $name @ #$room  ->  $server" -ForegroundColor DarkGray
 Write-Host "(relance avec -setup pour changer)" -ForegroundColor DarkGray
 
-# --- Si le serveur est local, on le démarre s'il ne tourne pas déjà ---
+# --- Si le serveur tourne sur CE PC (localhost OU une de nos IP, ex. Tailscale),
+#     on le démarre s'il ne tourne pas déjà ---
 $port = 4242
 if ($server -match ':(\d+)') { $port = [int]$matches[1] }
-$isLocal = $server -match '(localhost|127\.0\.0\.1)'
+$srvHost = if ($server -match '^ws://([^:/]+)') { $matches[1] } else { $null }
+$localIps = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty IPAddress)
+$isLocal = ($srvHost -match '^(localhost|127\.0\.0\.1)$') -or ($localIps -contains $srvHost)
 if ($isLocal) {
   $listening = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
   if (-not $listening) {

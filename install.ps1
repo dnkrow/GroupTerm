@@ -40,6 +40,16 @@ $lnk.Description = 'Terminal partage GroupTerm'
 $lnk.Save()
 Write-Host "Raccourci cree : $desktop\GroupTerm.lnk" -ForegroundColor Green
 
+# Raccourci "Reglages" (re-demande nom / room / serveur)
+$lnk2 = $wsh.CreateShortcut((Join-Path $desktop 'GroupTerm - Reglages.lnk'))
+$lnk2.TargetPath = $ps
+$lnk2.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launch`" -setup"
+$lnk2.WorkingDirectory = $dir
+$lnk2.IconLocation = "$ps,0"
+$lnk2.Description = 'Changer nom / room / serveur GroupTerm'
+$lnk2.Save()
+Write-Host "Raccourci cree : $desktop\GroupTerm - Reglages.lnk" -ForegroundColor Green
+
 # --- 4. Clic droit (HKCU, sans admin) ---
 $cmdDir = "$ps -NoProfile -ExecutionPolicy Bypass -File `"$launch`" `"%1`""
 $cmdBg  = "$ps -NoProfile -ExecutionPolicy Bypass -File `"$launch`" `"%V`""
