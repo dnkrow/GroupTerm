@@ -1,8 +1,14 @@
 {
-  "name": "group-terminal",
-  "version": "0.1.0",
+  "name": "groupterm",
+  "version": "1.0.0",
   "description": "Terminal partagé en réseau (peek/say/chat) pour humains et IA",
   "main": "server.js",
+  "license": "MIT",
+  "author": "dnkrow",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dnkrow/GroupTerm.git"
+  },
   "scripts": {
     "start": "node server.js",
     "gt": "node gt.js",
