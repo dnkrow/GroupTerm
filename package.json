@@ -1,21 +1,17 @@
 {
   "name": "group-terminal",
   "version": "0.1.0",
-  "description": "Terminal partagé en groupe avec chat intégré pour humains et IA",
+  "description": "Terminal partagé en réseau (peek/say/chat) pour humains et IA",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "client": "node client.js",
-    "client:tui": "node client-tui.js",
-    "ai": "node ai-agent.js",
-    "test": "node test-integration.js && node test-ai.js",
-    "test:tui": "node test-tui.js"
+    "gt": "node gt.js",
+    "test": "node test-say-peek.js",
+    "test:wrapper": "node test-wrapper.js"
   },
   "dependencies": {
-    "blessed": "^0.1.81",
-    "chalk": "4.1.2",
+    "@xterm/headless": "^6.0.0",
     "node-pty": "^1.1.0",
-    "term.js": "^0.0.7",
     "ws": "8.16.0"
   },
   "engines": {

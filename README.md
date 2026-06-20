@@ -1,18 +1,22 @@
-# Group Terminal 🖥️👥🤖
+# group-terminal 🖥️🤝🤖
 
-Un terminal partagé en temps réel pour travailler à plusieurs sur le même projet, avec un chat intégré où les IA peuvent observer et échanger.
+Terminal **partagé en réseau** pour bosser à deux (ou plus) sur le même projet — chacun sur sa machine, sur sa branche — où **toi et ton IA pouvez jeter un œil au terminal de l'autre et lui parler en direct**, via 3 simples commandes : `peek`, `say`, `chat`.
+
+Inspiré de DuoTerm. Différence clé : DuoTerm est mono-machine (2 panneaux locaux), **group-terminal est réseau** (chacun sur son PC, reliés par un serveur).
 
 ## Concept
 
-Tu bosses avec un pote sur un projet. Chacun est sur sa branche, dans son terminal, mais vous voulez :
-- voir en direct ce que l'autre fait,
-- discuter dans le terminal,
-- laisser vos IA observer et intervenir quand on les sollicite.
+Tu lances `gt.js` à la place de ton terminal habituel. Ça démarre ton shell **normal** (rendu natif, rien n'est re-dessiné) et ça ajoute, dans ton PATH, 3 commandes qui parlent au serveur partagé :
 
-Group Terminal relie tous les terminaux via WebSocket et diffuse :
-- les sorties de commandes,
-- les messages de chat,
-- les demandes de "peek" (jeter un œil au terminal de l'autre).
+| Commande | Effet |
+|----------|-------|
+| `peek` | Affiche l'écran du binôme (rendu propre, même s'il a un TUI comme Claude Code) |
+| `peek alice -n 100` | 100 dernières lignes d'une personne précise |
+| `say "message"` | Écrit le message **dans le terminal de l'autre** (apparaît comme un input → réveille son IA) |
+| `say --to alice "..."` | Cible une personne précise |
+| `chat` | Affiche l'historique propre de la conversation |
+
+Comme ce sont de **vraies commandes shell**, elles marchent aussi bien pour toi que pour une IA (Claude Code, etc.) tournant dans le terminal : ton IA peut faire `peek`/`say`/`chat` toute seule.
 
 ## Installation
 
@@ -20,144 +24,92 @@ Group Terminal relie tous les terminaux via WebSocket et diffuse :
 npm install
 ```
 
-## Lancement rapide
+## Utilisation
 
-### 1. Démarrer le serveur
+### 1. Démarrer le serveur (une seule fois, n'importe où sur le réseau)
 
 ```bash
 npm start
 ```
 
-Par défaut le serveur écoute sur `ws://localhost:4242`.
+Écoute sur `ws://localhost:4242`. Pour exposer sur le réseau, les autres pointent vers ton IP via `GT_SERVER` (voir plus bas).
 
-### 2. Se connecter avec le client TUI (recommandé)
-
-Dans un vrai terminal (pas un pipe) :
+### 2. Chaque personne lance son terminal partagé
 
 ```bash
-# Alice — à gauche son terminal, à droite celui de Bob
-npm run client:tui -- alice notre-projet bob
+# Toi
+node gt.js alice notre-projet
 
-# Bob — dans un autre terminal
-npm run client:tui -- bob notre-projet alice
+# Ton pote (sur son PC)
+node gt.js bob notre-projet
 ```
 
-L'interface est une **seule fenêtre** divisée en 3 zones :
+Format : `node gt.js <nom> <room> [role]`. Tu te retrouves dans ton shell normal, avec `peek`/`say`/`chat` disponibles.
 
-```
-┌─────────────────┬─────────────────┐
-│                 │                 │
-│   TOI (gauche)  │  AUTRE (droite) │
-│   terminal      │  terminal en    │
-│   interactif    │  direct         │
-│                 │                 │
-├─────────────────┴─────────────────┤
-│           Zone de chat            │
-└───────────────────────────────────┘
-```
+### 3. Lance ton IA dedans (optionnel)
 
-**Raccourcis :**
-- `Tab` : passer du terminal à la zone de chat (et inversement)
-- `Entrée` (en mode chat) : envoyer le message
-- `Esc` : annuler / retourner au terminal
-- `Ctrl+C` : quitter
+Dans la fenêtre `gt.js`, lance `claude` (ou autre). Ton IA hérite des commandes : elle peut `peek` le terminal du binôme et lui `say` des messages.
 
-Si tu veux voir tout le monde à droite au lieu d'une seule personne, enlève le 4ème argument :
+## Variables d'environnement
+
+| Variable | Défaut | Rôle |
+|----------|--------|------|
+| `GT_SERVER` | `ws://localhost:4242` | URL du serveur (mettre l'IP de l'hôte pour le réseau) |
+| `GT_ROOM` | `default` | Room (espace isolé) |
+| `GT_NAME` | argument | Ton nom |
+| `GT_ROLE` | `human` | `human` ou `ai` |
+| `PORT` | `4242` | Port du serveur |
+
+Exemple réseau :
 
 ```bash
-npm run client:tui -- alice notre-projet
+GT_SERVER=ws://192.168.1.20:4242 node gt.js alice notre-projet
 ```
 
-### 3. Client simple (fallback sans TUI)
+## Rooms
 
-Si le TUI ne marche pas dans ton environnement :
+Chaque groupe a sa room isolée (messages + écrans séparés) :
 
 ```bash
-npm run client -- alice notre-projet
+node gt.js alice projet-secret
+node gt.js bob   projet-secret
 ```
 
-C'est un client readline + exec : moins interactif mais fonctionne partout.
+## Superviser à distance
 
-### 4. Connecter une IA
+Comme chaque terminal est diffusé au serveur, tu peux jeter un œil aux deux côtés depuis n'importe où, sans déranger, en appelant directement la commande-outil :
 
 ```bash
-npm run ai -- alice-bot notre-projet
+GT_SERVER=ws://localhost:4242 GT_ROOM=notre-projet GT_NAME=superviseur node gt-tool.js peek alice
+GT_SERVER=ws://localhost:4242 GT_ROOM=notre-projet GT_NAME=superviseur node gt-tool.js chat
 ```
-
-## Commandes disponibles
-
-Dans le chat :
-
-| Commande | Description |
-|----------|-------------|
-| `/msg <texte>` | Envoyer un message dans le chat de groupe |
-| `/peek <nom>` | Afficher les dernières lignes du terminal de `<nom>` |
-| `/who` | Liste des participants connectés |
-| `/help` | Afficher l'aide |
-| `/quit` | Quitter |
-
-Un message simple (sans `/`) est aussi envoyé dans le chat.
-
-## Interactions IA
-
-Dans le chat, un message contenant `@<nom-de-l-ia>` déclenche une réponse de l'IA. Exemples :
-
-```
-/msg @alice-bot quels sont les fichiers modifiés ?
-/msg @alice-bot sur quelle branche tu es ?
-/msg @alice-bot derniers commits ?
-```
-
-L'IA exécute la commande correspondante **sur son propre poste** et répond dans le chat.
-
-## Rooms / canaux
-
-Chaque groupe a sa propre room. Les messages et l'historique sont isolés par room.
-
-```bash
-npm run client:tui -- alice projet-secret bob
-npm run ai -- bot-projet projet-secret
-```
-
-Quand tu rejoins une room, tu récupères automatiquement :
-- les derniers messages de chat,
-- les dernières sorties de terminal des participants.
 
 ## Architecture
 
 ```
-                    WebSocket
-   alice ───────┐              ┌─────── bob
-  (client TUI)   │              │  (client TUI)
-                 │◄────────────►│
-   alice-bot ────┤   serveur    ├────── bob-bot
-      (IA)       │   (relai)    │      (IA)
-                 │              │
-                 └──────────────┘
-                 rooms + historique
+   PC d'Alice                         PC de Bob
+ ┌───────────────┐                  ┌───────────────┐
+ │  gt.js        │   WebSocket      │  gt.js        │
+ │  ├ ton shell  │◄───────────────► │  ├ ton shell  │
+ │  └ peek/say/  │     serveur      │  └ peek/say/  │
+ │    chat (PATH)│   (relais +      │    chat (PATH)│
+ └───────────────┘    émulateur     └───────────────┘
+                      par membre)
 ```
+
+- **`server.js`** — relais WebSocket. Garde un **émulateur de terminal (`@xterm/headless`) par membre**, alimenté par son flux : `peek` renvoie l'écran *rendu* (propre), pas le flux brut. Stocke aussi le transcript du `chat` par room.
+- **`gt.js`** — wrapper : lance ton shell en passthrough transparent, diffuse sa sortie au serveur, injecte `peek`/`say`/`chat` dans le PATH, et injecte les `say` entrants via *bracketed paste* (`\x1b[200~…\x1b[201~`) pour réveiller l'IA cible.
+- **`gt-tool.js`** — implémentation one-shot derrière `peek`/`say`/`chat`.
 
 ## Tests
 
 ```bash
-# Tests fonctionnels (serveur doit être démarré)
-npm test
-
-# Test du client TUI dans un pseudo-terminal (serveur doit être démarré)
-npm run test:tui
+npm test             # flux say/peek/chat (livraison, transcript, cibles)
+npm run test:wrapper # le wrapper diffuse bien + reçoit les say injectés
 ```
 
-## Limitations actuelles (MVP)
+## Limitations / pistes
 
-- Le client TUI affiche le shell local dans un `blessed.box` : les commandes fonctionnent, mais le rendu ANSI/couleurs/curseur est basique.
-- Pas de chiffrement : tout passe en clair sur WebSocket (`ws://`).
-- Pas d'authentification.
-
-## Prochaines étapes possibles
-
-- Vrai émulateur de terminal dans le client TUI (xterm.js ou blessed.terminal bien intégré).
-- Mode "observeur" passif pour les IA.
-- Authentification par token.
-- Transport chiffré (`wss://`).
-- Canal privé entre deux participants.
-- Partage de fichiers / snippets.
+- Pas d'authentification ni de chiffrement (`ws://` en clair) → réseau de confiance uniquement. Piste : token + `wss://`.
+- La ligne de saisie en cours de composition d'un TUI peut rester volatile dans `peek` (négligeable).
+- Pas de verrou de tour de parole strict (les `say` simultanés sont possibles). Piste : alternance optionnelle.
