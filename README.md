@@ -35,29 +35,45 @@ Par défaut le serveur écoute sur `ws://localhost:4242`.
 Dans un vrai terminal (pas un pipe) :
 
 ```bash
-# Alice
-npm run client:tui -- alice ma-room
+# Alice — à gauche son terminal, à droite celui de Bob
+npm run client:tui -- alice notre-projet bob
 
-# Bob (dans un autre terminal)
-npm run client:tui -- bob ma-room
+# Bob — dans un autre terminal
+npm run client:tui -- bob notre-projet alice
 ```
 
-Le client TUI affiche :
-- en haut : ton vrai shell PowerShell/Bash interactif (node-pty),
-- en bas : le chat + l'activité de l'autre.
+L'interface est une **seule fenêtre** divisée en 3 zones :
+
+```
+┌─────────────────┬─────────────────┐
+│                 │                 │
+│   TOI (gauche)  │  AUTRE (droite) │
+│   terminal      │  terminal en    │
+│   interactif    │  direct         │
+│                 │                 │
+├─────────────────┴─────────────────┤
+│           Zone de chat            │
+└───────────────────────────────────┘
+```
 
 **Raccourcis :**
-- `Tab` : passer en mode chat / revenir au terminal
+- `Tab` : passer du terminal à la zone de chat (et inversement)
 - `Entrée` (en mode chat) : envoyer le message
-- `Esc` (en mode chat) : annuler
+- `Esc` : annuler / retourner au terminal
 - `Ctrl+C` : quitter
+
+Si tu veux voir tout le monde à droite au lieu d'une seule personne, enlève le 4ème argument :
+
+```bash
+npm run client:tui -- alice notre-projet
+```
 
 ### 3. Client simple (fallback sans TUI)
 
 Si le TUI ne marche pas dans ton environnement :
 
 ```bash
-npm run client -- alice ma-room
+npm run client -- alice notre-projet
 ```
 
 C'est un client readline + exec : moins interactif mais fonctionne partout.
@@ -65,12 +81,12 @@ C'est un client readline + exec : moins interactif mais fonctionne partout.
 ### 4. Connecter une IA
 
 ```bash
-npm run ai -- alice-bot ma-room
+npm run ai -- alice-bot notre-projet
 ```
 
 ## Commandes disponibles
 
-Dans le chat (client TUI ou client simple) :
+Dans le chat :
 
 | Commande | Description |
 |----------|-------------|
@@ -99,7 +115,7 @@ L'IA exécute la commande correspondante **sur son propre poste** et répond dan
 Chaque groupe a sa propre room. Les messages et l'historique sont isolés par room.
 
 ```bash
-npm run client:tui -- alice projet-secret
+npm run client:tui -- alice projet-secret bob
 npm run ai -- bot-projet projet-secret
 ```
 

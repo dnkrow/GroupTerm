@@ -5,21 +5,22 @@ const chalk = require('chalk');
 
 if (!process.stdin.isTTY || !process.stdout.isTTY) {
   console.error(chalk.red('Ce client doit être lancé dans un vrai terminal (pas un pipe).'));
-  console.error(chalk.gray('Utilise : npm run client:tui -- <nom> <room>'));
+  console.error(chalk.gray('Utilise : npm run client:tui -- <nom> <room> [nom-a-observer]'));
   process.exit(1);
 }
 
 const SERVER = process.env.SERVER || 'ws://localhost:4242';
 const NAME = process.env.NAME || process.argv[2] || 'anonyme';
 const ROOM = process.env.ROOM || process.argv[3] || 'default';
+const WATCH = process.env.WATCH || process.argv[4] || null; // Nom de la personne à observer (sinon tout le monde)
 const ROLE = process.env.ROLE || 'human';
 const SHELL = process.platform === 'win32' ? 'powershell.exe' : process.platform === 'darwin' ? 'zsh' : 'bash';
 
 let ws;
 let shell;
 let screen;
-let terminalBox;
-let chatLog;
+let localBox;
+let remoteBox;
 let chatInput;
 let chatMode = false;
 let localOutputBuffer = '';
@@ -31,8 +32,8 @@ function send(type, payload) {
   }
 }
 
-function addChatLine(line) {
-  chatLog.log(line);
+function addRemoteLine(line) {
+  remoteBox.log(line);
   screen.render();
 }
 
@@ -41,10 +42,20 @@ function addRemoteTerminal(data, from) {
   const lines = data.split('\n');
   for (const line of lines) {
     if (line.trim()) {
-      chatLog.log(prefix + line);
+      remoteBox.log(prefix + line);
     }
   }
   screen.render();
+}
+
+function addRemoteChat(msg) {
+  const color = msg.role === 'ai' ? chalk.cyan : chalk.green;
+  addRemoteLine(color(`[${msg.from}]`) + ' ' + msg.text);
+}
+
+function shouldDisplayRemote(msg) {
+  if (!WATCH) return true;
+  return msg.from === WATCH;
 }
 
 function connect() {
@@ -64,37 +75,44 @@ function connect() {
 
     switch (msg.type) {
       case 'chat': {
-        const color = msg.role === 'ai' ? chalk.cyan : chalk.green;
-        addChatLine(color(`[${msg.from}]`) + ' ' + msg.text);
+        if (msg.from === NAME) break; // Pas besoin de réafficher ses propres messages
+        if (shouldDisplayRemote(msg)) addRemoteChat(msg);
         break;
       }
-      case 'system':
-        addChatLine(chalk.yellow(`[système] ${msg.text}`));
+      case 'system': {
+        addRemoteLine(chalk.yellow(`[système] ${msg.text}`));
         break;
-      case 'terminal':
-        addRemoteTerminal(msg.data, msg.from);
+      }
+      case 'terminal': {
+        if (msg.from === NAME) break;
+        if (shouldDisplayRemote(msg)) addRemoteTerminal(msg.data, msg.from);
         break;
+      }
       case 'peek-result': {
         if (!msg.found) {
-          addChatLine(chalk.red(`[peek] ${msg.target} introuvable.`));
+          addRemoteLine(chalk.red(`[peek] ${msg.target} introuvable.`));
         } else {
-          addChatLine(chalk.magenta(`--- terminal de ${msg.target} ---`));
+          addRemoteLine(chalk.magenta(`--- terminal de ${msg.target} ---`));
           for (const line of msg.buffer.split('\n')) {
-            addChatLine(chalk.magenta(line));
+            addRemoteLine(chalk.magenta(line));
           }
-          addChatLine(chalk.magenta('--- fin ---'));
+          addRemoteLine(chalk.magenta('--- fin ---'));
         }
         break;
       }
       case 'history': {
         if (msg.kind === 'chat') {
           for (const item of msg.items) {
-            const color = item.role === 'ai' ? chalk.cyan : chalk.green;
-            addChatLine(chalk.gray('(historique) ') + color(`[${item.from}]`) + ' ' + item.text);
+            if (item.from === NAME) continue;
+            if (shouldDisplayRemote(item)) {
+              const color = item.role === 'ai' ? chalk.cyan : chalk.green;
+              addRemoteLine(chalk.gray('(historique) ') + color(`[${item.from}]`) + ' ' + item.text);
+            }
           }
         } else if (msg.kind === 'terminal') {
           for (const item of msg.items) {
-            addRemoteTerminal(item.data, item.from);
+            if (item.from === NAME) continue;
+            if (shouldDisplayRemote(item)) addRemoteTerminal(item.data, item.from);
           }
         }
         break;
@@ -105,12 +123,12 @@ function connect() {
   });
 
   ws.on('close', () => {
-    addChatLine(chalk.red('[système] Déconnecté. Reconnexion dans 3s...'));
+    addRemoteLine(chalk.red('[système] Déconnecté. Reconnexion dans 3s...'));
     setTimeout(connect, 3000);
   });
 
   ws.on('error', (err) => {
-    addChatLine(chalk.red(`[erreur] ${err.message}`));
+    addRemoteLine(chalk.red(`[erreur] ${err.message}`));
   });
 }
 
@@ -124,15 +142,15 @@ function flushTerminalBuffer() {
 function startShell() {
   shell = pty.spawn(SHELL, [], {
     name: 'xterm-color',
-    cols: terminalBox.width - 2,
-    rows: terminalBox.height - 2,
+    cols: localBox.width - 2,
+    rows: localBox.height - 2,
     cwd: process.cwd(),
     env: process.env,
   });
 
   shell.onData((data) => {
-    terminalBox.setContent(terminalBox.getContent() + data);
-    terminalBox.scroll(terminalBox.getScrollHeight());
+    localBox.setContent(localBox.getContent() + data);
+    localBox.scroll(localBox.getScrollHeight());
     screen.render();
 
     localOutputBuffer += data;
@@ -144,25 +162,27 @@ function startShell() {
     }
   });
 
-  // Redimensionnement
   screen.on('resize', () => {
-    shell.resize(terminalBox.width - 2, terminalBox.height - 2);
+    shell.resize(localBox.width - 2, localBox.height - 2);
   });
 }
 
 function buildUI() {
+  const watchLabel = WATCH ? ` (observant ${WATCH})` : '';
+
   screen = blessed.screen({
     smartCSR: true,
-    title: `Group Terminal - ${NAME} @ #${ROOM}`,
+    title: `Group Terminal - ${NAME} @ #${ROOM}${watchLabel}`,
   });
 
-  terminalBox = blessed.box({
+  // Terminal local (gauche)
+  localBox = blessed.box({
     parent: screen,
     top: 0,
     left: 0,
-    width: '100%',
-    height: '80%-1',
-    label: ` {bold}${NAME} (local){/bold} — Tab pour chatter — Ctrl+C pour quitter `,
+    width: '50%',
+    height: '100%-3',
+    label: ` {bold}${NAME} (toi){/bold} — Tab pour chatter — Ctrl+C pour quitter `,
     border: 'line',
     scrollable: true,
     alwaysScroll: true,
@@ -175,13 +195,14 @@ function buildUI() {
     },
   });
 
-  chatLog = blessed.log({
+  // Terminal distant (droite)
+  remoteBox = blessed.log({
     parent: screen,
-    top: '80%-1',
-    left: 0,
-    width: '100%',
-    height: '20%',
-    label: ' {bold}Chat & Activité{/bold} ',
+    top: 0,
+    left: '50%',
+    width: '50%',
+    height: '100%-3',
+    label: ` {bold}Terminal distant${watchLabel}{/bold} `,
     border: 'line',
     scrollable: true,
     alwaysScroll: true,
@@ -192,31 +213,37 @@ function buildUI() {
     },
   });
 
+  // Input de chat (bas)
   chatInput = blessed.textbox({
     parent: screen,
     bottom: 0,
     left: 0,
     width: '100%',
     height: 3,
-    label: ' {bold}Message{/bold} (Entrée pour envoyer, Esc/Esc pour annuler) ',
+    label: ' {bold}Message{/bold} (Entrée pour envoyer, Esc pour annuler) ',
     border: 'line',
     inputOnFocus: true,
     style: {
       border: { fg: 'green' },
       focus: { border: { fg: 'cyan' } },
     },
-    hidden: true,
+    hidden: false,
   });
 
   // Capture les touches pour le shell local quand on n'est pas en mode chat
   screen.on('keypress', (ch, key) => {
     if (chatMode) return;
+    if (screen.focused === chatInput) return;
     if (key.name === 'tab') return;
     if (key.ctrl && key.name === 'c') return;
 
     let seq = ch || '';
     if (key.sequence) seq = key.sequence;
     if (shell) shell.write(seq);
+  });
+
+  chatInput.key(['tab', 'escape'], () => {
+    hideChatInput();
   });
 
   chatInput.on('submit', () => {
@@ -228,34 +255,41 @@ function buildUI() {
 
     if (text.startsWith('/msg ')) {
       send('chat', { text: text.slice(5) });
+      addRemoteLine(chalk.green(`[moi] ${text.slice(5)}`));
     } else if (text.startsWith('/peek ')) {
       send('peek', { target: text.slice(6) });
     } else if (text === '/who') {
       send('who', {});
     } else if (text === '/help') {
-      addChatLine(chalk.blue('Commandes : /msg <texte>  /peek <nom>  /who  /help  /quit'));
+      addRemoteLine(chalk.blue('Commandes : /msg <texte>  /peek <nom>  /who  /help  /quit'));
     } else if (text === '/quit') {
       process.exit(0);
     } else if (text.startsWith('/')) {
-      addChatLine(chalk.red(`Commande inconnue : ${text}`));
+      addRemoteLine(chalk.red(`Commande inconnue : ${text}`));
     } else {
       send('chat', { text });
+      addRemoteLine(chalk.green(`[moi] ${text}`));
     }
   });
 
   chatInput.on('cancel', hideChatInput);
 
-  function showChatInput() {
-    chatMode = true;
-    chatInput.show();
-    chatInput.focus();
-    screen.render();
-  }
+
 
   function hideChatInput() {
     chatMode = false;
-    chatInput.hide();
-    terminalBox.focus();
+    chatInput.clearValue();
+    localBox.focus();
+    localBox.setLabel(` {bold}${NAME} (toi){/bold} — Tab pour chatter — Ctrl+C pour quitter `);
+    chatInput.setLabel(' {bold}Message{/bold} ');
+    screen.render();
+  }
+
+  function showChatInput() {
+    chatMode = true;
+    chatInput.focus();
+    localBox.setLabel(` {bold}${NAME} (toi){/bold} `);
+    chatInput.setLabel(' {bold}Message{/bold} (Entrée pour envoyer, Tab/Esc pour retourner au terminal) ');
     screen.render();
   }
 
@@ -268,7 +302,7 @@ function buildUI() {
     process.exit(0);
   });
 
-  terminalBox.focus();
+  localBox.focus();
   screen.render();
 }
 
