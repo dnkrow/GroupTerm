@@ -4,7 +4,9 @@ Contexte pour toute session Claude travaillant sur ce dépôt.
 
 ## C'est quoi
 
-**GroupTerm** : terminal partagé en réseau pour bosser à deux (ou +) sur le même projet, chacun sur sa machine. Chaque personne (et son IA) peut voir le terminal de l'autre et lui parler via 3 commandes shell : `peek`, `say`, `chat`. Pensé pour le pair-coding humain+IA (les IA peuvent appeler ces commandes elles-mêmes).
+**GroupTerm** : terminal partagé en réseau pour bosser à deux (ou +) sur le même projet, chacun sur sa machine. Chaque personne (et son IA) peut voir le terminal de l'autre et lui parler via 4 commandes shell : `peek`, `say`, `chat`, `who`. Pensé pour le pair-coding humain+IA (les IA peuvent appeler ces commandes elles-mêmes).
+
+En plus des commandes, un **hub web** (`gt-hub` + `public/`, un par PC) sert un **centre de contrôle** dans le navigateur : voir toutes les rooms et leur présence en direct, lire/écrire le chat, observer l'écran d'un membre (onglet peek), et ouvrir/fermer des terminaux sur sa machine.
 
 Inspiré de DuoTerm (app Electron mono-machine) ; ici c'est **réseau** (serveur relais + clients sur des PC différents).
 
