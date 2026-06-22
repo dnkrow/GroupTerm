@@ -14,11 +14,50 @@ Tu lances `GroupTerm` au lieu de ton terminal habituel. Tu obtiens **ton shell n
 |----------|-------|
 | `peek` | Affiche l'écran de ton binôme (propre, même s'il fait tourner un TUI comme Claude Code) |
 | `peek bob -n 100` | 100 dernières lignes d'une personne précise |
-| `say "message"` | Écrit le message **dans le terminal de l'autre** — il y apparaît comme une saisie, ce qui réveille son IA |
+| `say "message"` | Écrit le message **dans le terminal de l'autre** — il y apparaît comme une saisie, ce qui réveille son IA (préfixé `#` : sans IA lancée, c'est un commentaire inoffensif au prompt) |
 | `say --to bob "..."` | Cible une personne précise |
 | `chat` | Affiche l'historique propre de la conversation |
+| `who` | Liste qui est dans la room, avec son état (live / idle) |
 
-Comme ce sont de **vraies commandes shell**, elles marchent pour toi comme pour une IA tournant dans le terminal : ton IA peut faire `peek` / `say` / `chat` d'elle-même.
+Comme ce sont de **vraies commandes shell**, elles marchent pour toi comme pour une IA tournant dans le terminal : ton IA peut faire `peek` / `say` / `chat` / `who` d'elle-même.
+
+---
+
+## Le hub web (centre de contrôle)
+
+Dès qu'on travaille sur **plusieurs terminaux / plusieurs rooms**, ça devient vite le bazar. Le **hub** est une **page web** (ouverte dans ton navigateur) qui te donne une vue d'ensemble et te laisse tout piloter :
+
+```bash
+node gt-hub.js <ton-nom>      # ou : npm run hub -- <ton-nom>   → ouvre ton navigateur
+```
+
+```
+┌ Rooms ─────────┐┌ #notre-projet · chat ─────────┐┌ Présence ──────┐
+│> #notre-projet ││ 14:02 mateo: go ?             ││ ● malou        │
+│  #site-mateo   ││ 14:02 malou: oui              ││ ● mateo        │
+│  #perso        ││                               ││ ● claude-m  ai │
+│                ││ say… (@nom pour cibler) [Envoyer]│└────────────────┘
+│ ＋Terminal ici ││                               ││ écran de mateo │
+│ ＋Nouvelle room│└───────────────────────────────┘│ $ npm test ... │
+└────────────────┘ Mes terminaux : #notre-projet ✕  └────────────────┘
+```
+
+- **Toutes les rooms** ouvertes et qui est dedans, en temps réel (● vert = actif, ● gris = idle).
+- **Chat** de la room sélectionnée + envoi (`@nom` pour cibler) — sans rien re-scroller.
+- **Voir l'écran d'un membre** en direct : clique son nom → peek live dans le panneau.
+- **Ouvrir un terminal sur TON PC** dans une room (existante ou nouvelle) d'un clic.
+- **Fermer un de tes terminaux** depuis la liste « Mes terminaux ».
+
+> **Comment ça marche** : le hub est un petit programme qui tourne sur **ton** PC (une page web seule ne peut pas ouvrir de terminal sur ta machine). Il sert la page sur `http://localhost:4243`, se connecte au serveur pour l'état partagé, et lance/ferme les terminaux localement. Le **lanceur Windows démarre le hub tout seul** (un par PC). `-nodash` pour s'en passer.
+
+### Alternative terminal (sans navigateur)
+
+Si tu préfères un panneau dans un terminal à côté plutôt qu'une page web :
+
+```bash
+node gt-dash.js <ton-nom> <room>      # ou : npm run dash
+```
+Roster + chat live + ligne `say>`, pour une seule room. Ctrl+C restaure ton terminal intact.
 
 ---
 
@@ -36,9 +75,11 @@ Une machine fait tourner un **serveur relais** ; tout le monde s'y connecte.
 ```
 
 - **`server.js`** — relais WebSocket. Garde un **émulateur de terminal (`@xterm/headless`) par membre**, alimenté par son flux : `peek` renvoie l'**écran rendu** (propre), pas le flux brut. Garde aussi le transcript du `chat` par room.
-- **`gt.js`** — le client : lance ton shell en passthrough transparent, diffuse sa sortie au serveur, injecte `peek`/`say`/`chat` dans le `PATH`, et injecte les `say` entrants via *bracketed paste* (`\x1b[200~…\x1b[201~`) pour réveiller l'IA cible.
+- **`gt.js`** — le client : lance ton shell en passthrough transparent, diffuse sa sortie au serveur, injecte `peek`/`say`/`chat`/`who` dans le `PATH`, et injecte les `say` entrants via *bracketed paste* (`\x1b[200~…\x1b[201~`) pour réveiller l'IA cible.
+- **`gt-hub.js`** + **`public/`** — le **hub web** (un par PC) : sert la page de contrôle sur `localhost:4243`, s'abonne à toutes les rooms du serveur, et ouvre/ferme les terminaux localement.
+- **`gt-dash.js`** — variante TUI du tableau de bord (roster + chat) pour une room, dans un terminal à côté.
 - **`gt-tool.js`** — implémentation one-shot derrière les commandes.
-- **`gt-launch.ps1`** — lanceur (retient nom/room/serveur, démarre le serveur si besoin).
+- **`gt-launch.ps1`** — lanceur (retient **plusieurs connexions**, menu de choix, démarre le serveur si besoin, ouvre le hub web).
 
 ---
 
@@ -72,7 +113,9 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 2. Double-clic sur **GroupTerm**.
 3. Renseigner : son nom (ex: `bob`), la **même room** (`notre-projet`), et comme serveur **l'adresse du PC qui héberge** (voir Tailscale ci-dessous).
 
-> Les réglages sont mémorisés dans `%USERPROFILE%\.groupterm.json`. Pour les changer : relancer avec `-setup`, ou supprimer ce fichier.
+> Les réglages sont mémorisés dans `%USERPROFILE%\.groupterm.json`. Tu peux garder **plusieurs connexions** (projets/rooms) : le lanceur affiche alors un petit menu (Entrée = rouvrir la dernière). Pour en **ajouter une**, relance avec `-setup`. Pour ne pas ouvrir le tableau de bord : `-nodash`.
+
+> **Arrêter proprement.** Fermer la croix d'un terminal ne ferme **que ce terminal** — le **relais** et le **hub** continuent de tourner en arrière-plan. Pour arrêter : raccourci Bureau **« GroupTerm - Arrêter »** (ou `gt-launch.ps1 -stop`) ferme tes terminaux + le hub en gardant le relais ; `gt-launch.ps1 -stopall` coupe **aussi** le relais (⚠️ déconnecte ton binôme).
 
 ---
 
@@ -129,6 +172,8 @@ GT_SERVER=ws://localhost:4242 GT_ROOM=notre-projet GT_NAME=superviseur node gt-t
 ```bash
 npm test             # flux say/peek/chat (livraison, transcript, cibles)
 npm run test:wrapper # le wrapper diffuse bien + reçoit les say injectés
+npm run test:dash    # le tableau de bord : présence (roster), chat live, et who
+npm run test:hub     # le hub : abonnement global, liste des rooms, et fermeture (quit)
 ```
 
 ## Désinstaller

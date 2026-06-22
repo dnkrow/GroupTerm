@@ -12,8 +12,12 @@
   "scripts": {
     "start": "node server.js",
     "gt": "node gt.js",
+    "dash": "node gt-dash.js",
+    "hub": "node gt-hub.js",
     "test": "node test-say-peek.js",
-    "test:wrapper": "node test-wrapper.js"
+    "test:wrapper": "node test-wrapper.js",
+    "test:dash": "node test-dash.js",
+    "test:hub": "node test-hub.js"
   },
   "dependencies": {
     "@xterm/headless": "^6.0.0",

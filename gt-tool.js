@@ -12,8 +12,8 @@ const argv = process.argv.slice(2);
 const cmd = argv[0];
 const rest = argv.slice(1);
 
-if (!['peek', 'say', 'chat'].includes(cmd)) {
-  console.error('Usage : gt-tool <peek|say|chat> [args]');
+if (!['peek', 'say', 'chat', 'who'].includes(cmd)) {
+  console.error('Usage : gt-tool <peek|say|chat|who> [args]');
   process.exit(2);
 }
 

@@ -7,11 +7,29 @@ const SCROLLBACK = 2000;
 
 const wss = new WebSocket.Server({ port: PORT });
 
-// clients : ws => { name, role, room, term }
+// Sortie propre si le port est déjà pris : évite d'empiler des relais zombies
+// (sinon un ancien relais reste actif et tout le monde se branche dessus).
+wss.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} déjà utilisé : un serveur GroupTerm tourne déjà. J'arrête celui-ci.`);
+    process.exit(1);
+  }
+  console.error('Erreur serveur :', err.message);
+});
+
+// clients : ws => { name, role, room, term, lastActivity }
 const clients = new Map();
+
+// watchers (tableaux de bord) : ws => { room, name } ou { scope:'all', name }
+// Connexions qui veulent recevoir en direct la présence + le chat, sans être des
+// membres (pas de terminal diffusé). Scope 'all' = le hub web : toutes les rooms.
+const watchers = new Map();
 
 // rooms : roomName => { chat: [{from, role, text, time}] }
 const rooms = new Map();
+
+// Au-delà de ce délai sans sortie terminal, un membre est considéré "idle".
+const LIVE_WINDOW_MS = 8000;
 
 const clamp = (v, lo, hi, def) => {
   const n = parseInt(v, 10);
@@ -77,7 +95,56 @@ function pushTranscript(room, from, role, text) {
   const entry = { from, role: role || 'human', text, time: Date.now() };
   roomData.chat.push(entry);
   if (roomData.chat.length > MAX_CHAT_HISTORY) roomData.chat.shift();
+  broadcastChatEvent(room, entry);
   return entry;
+}
+
+// === Présence : pousser le roster + le chat aux tableaux de bord (watchers) ===
+
+// Liste des membres d'une room, prête à l'envoi (présence calculée côté client
+// à partir de lastActivity).
+function rosterOf(room) {
+  return roomMembers(room).map((m) => ({
+    name: m.name,
+    role: m.role,
+    lastActivity: m.lastActivity || 0,
+  }));
+}
+
+// Watchers concernés par une room : ceux abonnés à cette room + ceux en scope 'all'.
+function watchersOf(room) {
+  const out = [];
+  for (const [ws, w] of watchers) {
+    if (ws.readyState !== WebSocket.OPEN) continue;
+    if (w.scope === 'all' || w.room === room) out.push(ws);
+  }
+  return out;
+}
+
+function broadcastRoster(room) {
+  const members = rosterOf(room);
+  for (const ws of watchersOf(room)) send(ws, { type: 'roster', room, members });
+}
+
+function broadcastChatEvent(room, entry) {
+  for (const ws of watchersOf(room)) send(ws, { type: 'chat-event', room, ...entry });
+}
+
+// Rooms "actives" : celles avec au moins un membre, ou avec un historique de chat.
+function activeRooms() {
+  const set = new Set();
+  for (const m of clients.values()) set.add(m.room);
+  for (const [name, data] of rooms) if (data.chat.length) set.add(name);
+  return Array.from(set);
+}
+
+// Instantané de toutes les rooms (pour le hub web) — chat tronqué.
+function roomsSnapshot(chatLimit = 50) {
+  return activeRooms().map((room) => ({
+    room,
+    roster: rosterOf(room),
+    chat: getRoom(room).chat.slice(-chatLimit),
+  }));
 }
 
 // === Requêtes "outil" (peek/say/chat) — connexion éphémère, pas de membre ===
@@ -132,6 +199,26 @@ function handleTool(ws, msg) {
     return send(ws, { type: 'tool-result', cmd, ok: true, text: lines.join('\n') });
   }
 
+  if (cmd === 'quit') {
+    const target = msg.target ? String(msg.target).slice(0, 32) : null;
+    if (!target) return send(ws, { type: 'tool-result', cmd, ok: false, text: '[quit] cible manquante.' });
+    const found = findClientByName(room, target);
+    if (!found) return send(ws, { type: 'tool-result', cmd, ok: false, text: `[quit] "${target}" introuvable dans #${room}.` });
+    send(found.ws, { type: 'quit' });
+    return send(ws, { type: 'tool-result', cmd, ok: true, text: `[quit] ordre envoyé à ${target} (#${room}).` });
+  }
+
+  if (cmd === 'who') {
+    const members = roomMembers(room);
+    if (members.length === 0) return send(ws, { type: 'tool-result', cmd, ok: true, text: `[who] Personne dans #${room}.` });
+    const now = Date.now();
+    const lines = members.map((m) => {
+      const live = now - (m.lastActivity || 0) < LIVE_WINDOW_MS ? 'live' : 'idle';
+      return `  ${m.name} (${m.role}) — ${live}`;
+    });
+    return send(ws, { type: 'tool-result', cmd, ok: true, text: `===== #${room} =====\n${lines.join('\n')}` });
+  }
+
   return send(ws, { type: 'tool-result', cmd, ok: false, text: `[outil] commande inconnue : ${cmd}` });
 }
 
@@ -141,6 +228,25 @@ wss.on('connection', (ws) => {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
 
     if (msg.type === 'tool') { handleTool(ws, msg); return; }
+
+    // Tableau de bord : s'abonne à la présence + au chat.
+    if (msg.type === 'watch') {
+      const name = String(msg.name || 'dash').slice(0, 32);
+      // Hub web : scope 'all' = toutes les rooms d'un coup.
+      if (msg.scope === 'all') {
+        watchers.set(ws, { scope: 'all', name });
+        send(ws, { type: 'rooms-snapshot', rooms: roomsSnapshot() });
+        console.log(`[~] hub ${name} observe toutes les rooms`);
+        return;
+      }
+      // TUI gt-dash : une seule room.
+      const room = String(msg.room || 'default').slice(0, 32);
+      watchers.set(ws, { room, name });
+      const roomData = getRoom(room);
+      send(ws, { type: 'snapshot', room, roster: rosterOf(room), chat: roomData.chat });
+      console.log(`[~] tableau de bord ${name} observe #${room}`);
+      return;
+    }
 
     const meta = clients.get(ws);
 
@@ -157,13 +263,14 @@ wss.on('connection', (ws) => {
 
       const cols = clamp(msg.cols, 20, 300, 120);
       const rows = clamp(msg.rows, 5, 100, 40);
-      clients.set(ws, { name, role, room, term: newTerm(cols, rows) });
+      clients.set(ws, { name, role, room, term: newTerm(cols, rows), lastActivity: Date.now() });
       send(ws, { type: 'system', text: `Bienvenue, ${name} (${role}) dans #${room}.` });
 
       const members = roomMembers(room).map((c) => `${c.name} (${c.role})`).join(', ');
       send(ws, { type: 'system', text: `Connectés : ${members}` });
 
       systemBroadcast(room, `${name} (${role}) a rejoint #${room}.`, ws);
+      broadcastRoster(room);
       console.log(`[+] ${name} (${role}) rejoint #${room} (${wss.clients.size} connexion(s))`);
       return;
     }
@@ -174,6 +281,7 @@ wss.on('connection', (ws) => {
     // Flux du terminal -> alimente l'émulateur (peek rend un écran propre)
     if (msg.type === 'terminal') {
       try { meta.term.write(String(msg.data || '')); } catch {}
+      meta.lastActivity = Date.now();
       return;
     }
 
@@ -181,6 +289,7 @@ wss.on('connection', (ws) => {
       const cols = clamp(msg.cols, 20, 300, 120);
       const rows = clamp(msg.rows, 5, 100, 40);
       try { meta.term.resize(cols, rows); } catch {}
+      broadcastRoster(room);
       return;
     }
 
@@ -199,15 +308,31 @@ wss.on('connection', (ws) => {
   });
 
   ws.on('close', () => {
+    if (watchers.has(ws)) { watchers.delete(ws); return; }
     const meta = clients.get(ws);
     clients.delete(ws);
     if (meta) {
       systemBroadcast(meta.room, `${meta.name} (${meta.role}) a quitté #${meta.room}.`);
+      broadcastRoster(meta.room);
       console.log(`[-] ${meta.name} quitte #${meta.room}`);
     }
   });
 
   ws.on('error', (err) => console.error('Erreur WebSocket :', err.message));
 });
+
+// Rafraîchit périodiquement les tableaux de bord pour que les bascules
+// live <-> idle apparaissent même sans nouvelle activité. .unref() : ne
+// retient pas le process (utile pour les tests qui ferment le serveur).
+const rosterTick = setInterval(() => {
+  if (watchers.size === 0) return;
+  const hasGlobal = Array.from(watchers.values()).some((w) => w.scope === 'all');
+  const seen = new Set();
+  const target = hasGlobal ? activeRooms() : Array.from(watchers.values()).map((w) => w.room).filter(Boolean);
+  for (const room of target) {
+    if (!seen.has(room)) { seen.add(room); broadcastRoster(room); }
+  }
+}, 3000);
+rosterTick.unref();
 
 console.log(`Serveur group-terminal démarré sur ws://localhost:${PORT}`);

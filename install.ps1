@@ -50,6 +50,16 @@ $lnk2.Description = 'Changer nom / room / serveur GroupTerm'
 $lnk2.Save()
 Write-Host "Raccourci cree : $desktop\GroupTerm - Reglages.lnk" -ForegroundColor Green
 
+# Raccourci "Arreter" (ferme tes terminaux + le hub ; garde le relais)
+$lnk3 = $wsh.CreateShortcut((Join-Path $desktop 'GroupTerm - Arreter.lnk'))
+$lnk3.TargetPath = $ps
+$lnk3.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$launch`" -stop"
+$lnk3.WorkingDirectory = $dir
+$lnk3.IconLocation = "$ps,0"
+$lnk3.Description = 'Fermer tes terminaux GroupTerm + le hub (le relais reste)'
+$lnk3.Save()
+Write-Host "Raccourci cree : $desktop\GroupTerm - Arreter.lnk" -ForegroundColor Green
+
 # --- 4. Clic droit (HKCU, sans admin) ---
 $cmdDir = "$ps -NoProfile -ExecutionPolicy Bypass -File `"$launch`" `"%1`""
 $cmdBg  = "$ps -NoProfile -ExecutionPolicy Bypass -File `"$launch`" `"%V`""

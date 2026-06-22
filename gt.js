@@ -30,7 +30,7 @@ fs.mkdirSync(RUNTIME_BIN, { recursive: true });
 const TOOL = path.join(__dirname, 'gt-tool.js').replace(/\\/g, '/');
 
 function writeShims() {
-  for (const cmd of ['peek', 'say', 'chat']) {
+  for (const cmd of ['peek', 'say', 'chat', 'who']) {
     // Variante cmd.exe / PowerShell
     fs.writeFileSync(
       path.join(RUNTIME_BIN, `${cmd}.cmd`),
@@ -77,8 +77,13 @@ function flush() {
 let deliverChain = Promise.resolve();
 function injectPaste(text) {
   return new Promise((resolve) => {
+    // Préfixe chaque ligne par "# " : si aucune IA ne tourne et que le message
+    // atterrit à un simple prompt (PowerShell/bash), c'est une ligne de commentaire
+    // → Entrée n'exécute rien, pas d'erreur. Claude Code, lui, le lit normalement.
+    // (Le "#" est ajouté seulement ici, à l'injection ; l'historique du chat reste propre.)
+    const commented = text.split(/\r\n|\r|\n/).map((l) => '# ' + l).join('\n');
     // Collage entre crochets : insertion atomique reconnue par les TUI (Claude Code…)
-    shell.write('\x1b[200~' + text + '\x1b[201~');
+    shell.write('\x1b[200~' + commented + '\x1b[201~');
     setTimeout(() => {
       shell.write('\r');
       setTimeout(resolve, 150);
@@ -97,6 +102,11 @@ function connect() {
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === 'deliver') {
       deliverChain = deliverChain.then(() => injectPaste(msg.text)).catch(() => {});
+    } else if (msg.type === 'quit') {
+      // Fermeture demandée depuis le hub web : on coupe le shell et on sort.
+      try { shell.kill(); } catch {}
+      cleanup();
+      process.exit(0);
     }
     // Les autres types (system, etc.) sont ignorés : le shell reste propre.
   });
@@ -140,5 +150,6 @@ process.on('SIGINT', () => {}); // Ctrl+C est transmis au shell, pas au wrapper
 
 // Petit rappel avant que le shell ne prenne la main
 process.stdout.write(
-  `\x1b[2m[group-terminal] ${NAME} @ #${ROOM} — commandes: peek · say "msg" · chat\x1b[0m\r\n`
+  `\x1b[2m[group-terminal] ${NAME} @ #${ROOM} — commandes: peek · say "msg" · chat · who` +
+  `  (tableau de bord live: node gt-dash.js)\x1b[0m\r\n`
 );
