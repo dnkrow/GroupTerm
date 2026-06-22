@@ -100,6 +100,42 @@ powershell -ExecutionPolicy Bypass -File install.ps1
 
 ---
 
+## Mettre à jour GroupTerm (récupérer une nouvelle version)
+
+Quand l'hôte a poussé une mise à jour sur GitHub, chaque binôme la récupère ainsi :
+
+```powershell
+cd <dossier GroupTerm>        # ex: le dossier où tu as cloné le repo
+git pull
+```
+
+Puis **double-clic sur `GroupTerm`** (Bureau) : le lanceur à jour démarre le **hub web** et **ouvre ton navigateur** sur le tableau de bord. C'est tout.
+
+Détails utiles :
+
+- **Pas besoin de relancer `npm install`** sauf si les dépendances de `package.json` ont changé (la v1.1 n'en ajoute aucune : le hub n'utilise que des modules intégrés de Node + `ws`, déjà présent).
+- **Tu peux faire `git pull` avec un GroupTerm déjà ouvert** : ça ne modifie que les fichiers sur le disque, ton terminal en cours continue de tourner et reste compatible avec le serveur.
+- **Seul point d'attention** : si tu relances une fenêtre avec **le même nom + la même room** qu'un terminal déjà ouvert, le relais refuse le doublon et cette nouvelle fenêtre se ferme — **le dashboard s'ouvre quand même**. Le plus simple : ferme l'ancienne fenêtre avant de relancer, ou choisis une autre room.
+- Pour récupérer le nouveau raccourci **« GroupTerm - Arrêter »** (et la mise à jour du désinstalleur), relance **`install.ps1`** une fois. Pas nécessaire pour le reste.
+
+### ⚠️ Côté hôte uniquement (le PC qui fait tourner le serveur)
+
+Le relais est un process **longue durée** : il faut le **redémarrer** pour qu'il charge le nouveau code, sinon les dashboards des binômes resteront vides (ils parlent à l'ancien serveur). Le plus simple, sur le PC hôte :
+
+```powershell
+# arrête tout GroupTerm de CE PC (terminaux + hub + relais), avec confirmation
+powershell -ExecutionPolicy Bypass -File gt-launch.ps1 -stopall
+# puis relance GroupTerm (double-clic) : un relais + un hub frais démarrent
+```
+
+Les binômes connectés se reconnectent **automatiquement** au nouveau relais en quelques secondes.
+
+### Pour ton IA (Claude & co)
+
+L'interface, c'est des **commandes shell** dispo dans le terminal GroupTerm, pour toi **comme pour ton IA** : `peek` (voir l'écran de l'autre), `say "..."` (lui parler), `chat` (relire), **`who`** (qui est connecté, nouveau en v1.1). Voir le tableau en haut de ce README. Les `say` reçus sont injectés préfixés `#` : si aucune IA ne tourne, c'est un commentaire inoffensif au prompt ; dans Claude Code, le message est lu normalement.
+
+---
+
 ## Démarrage rapide
 
 ### Sur le PC qui héberge
