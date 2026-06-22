@@ -4,26 +4,27 @@
 const LIVE_WINDOW_MS = 8000;
 const state = {
   me: '…',
-  rooms: new Map(),   // room => { roster:[{name,role,lastActivity}], chat:[{from,role,text,time}] }
+  rooms: new Map(),        // room => { roster:[{name,role,lastActivity}], chat:[{from,role,text,time}] }
   selected: null,
-  peekTarget: null,
+  tab: 'chat',             // 'chat' | 'peek'
+  peekTarget: null,        // membre actuellement observé (dérivé de la room sélectionnée)
+  peekByRoom: {},          // mémorise la cible peek choisie par room
 };
+let peekActive = null;     // { room, target } en cours de poll côté hub
 
 // --- WebSocket vers le hub local ---
 let ws;
 function connect() {
   ws = new WebSocket(`ws://${location.host}`);
   ws.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch { return; } handle(m); };
-  ws.onclose = () => { setRelay(false); setTimeout(connect, 1500); };
+  ws.onclose = () => { setRelay(false); peekActive = null; setTimeout(connect, 1500); };
 }
 function send(obj) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj)); }
 
 // --- Réception ---
 function handle(m) {
   if (m.type === 'hello') {
-    state.me = m.name;
-    el('me').textContent = m.name;
-    setRelay(m.connected);
+    state.me = m.name; el('me').textContent = m.name; setRelay(m.connected);
   } else if (m.type === 'relay') {
     setRelay(m.connected);
   } else if (m.type === 'rooms-snapshot') {
@@ -35,14 +36,14 @@ function handle(m) {
     const s = getRoom(m.room); s.roster = m.members || [];
     ensureSelection();
     renderRooms(); renderMyTerms();
-    if (m.room === state.selected) renderRoster();
+    if (m.room === state.selected) { renderRoster(); if (state.tab === 'peek') renderPeek(); }
   } else if (m.type === 'chat-event') {
     const s = getRoom(m.room);
     s.chat.push({ from: m.from, role: m.role, text: m.text, time: m.time });
     if (s.chat.length > 200) s.chat.shift();
-    if (m.room === state.selected) renderChat();
+    if (m.room === state.selected && state.tab === 'chat') renderChat();
   } else if (m.type === 'peek') {
-    if (m.room === state.selected && m.target === state.peekTarget) {
+    if (state.tab === 'peek' && m.room === state.selected && m.target === state.peekTarget) {
       el('peek').textContent = m.text || '(écran vide)';
     }
   }
@@ -55,8 +56,7 @@ function getRoom(room) {
 function ensureSelection() {
   if (state.selected && state.rooms.has(state.selected)) return;
   const keys = [...state.rooms.keys()];
-  const withMembers = keys.find((k) => state.rooms.get(k).roster.length);
-  state.selected = withMembers || keys[0] || null;
+  state.selected = keys.find((k) => state.rooms.get(k).roster.length) || keys[0] || null;
 }
 
 // --- Utilitaires ---
@@ -64,19 +64,23 @@ const el = (id) => document.getElementById(id);
 const live = (m) => Date.now() - (m.lastActivity || 0) < LIVE_WINDOW_MS;
 const hhmm = (t) => { const d = new Date(t); return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
 function esc(s) { return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function setRelay(ok) { const r = el('relay'); r.textContent = ok ? 'relais connecté' : 'relais déconnecté'; r.className = 'relay ' + (ok ? 'on' : 'off'); }
 
-function setRelay(ok) {
-  const r = el('relay');
-  r.textContent = ok ? 'relais connecté' : 'relais déconnecté';
-  r.className = 'relay ' + (ok ? 'on' : 'off');
+// Membres de la room sélectionnée autres que moi (cibles peek possibles).
+function othersOf(room) { const r = room && state.rooms.get(room); return r ? r.roster.filter((m) => m.name !== state.me) : []; }
+// Cible peek résolue pour une room : mémorisée si encore présente, sinon le 1er autre.
+function resolvePeek(room) {
+  const others = othersOf(room);
+  if (!others.length) return null;
+  const want = state.peekByRoom[room];
+  return (want && others.some((m) => m.name === want)) ? want : others[0].name;
 }
 
 // --- Rendu ---
-function renderAll() { renderRooms(); renderChat(); renderRoster(); renderMyTerms(); }
+function renderAll() { renderRooms(); renderRoster(); renderMyTerms(); renderCenter(); }
 
 function renderRooms() {
-  const ul = el('room-list');
-  ul.innerHTML = '';
+  const ul = el('room-list'); ul.innerHTML = '';
   const keys = [...state.rooms.keys()].sort();
   if (!keys.length) { ul.innerHTML = '<li class="empty">aucune room ouverte</li>'; return; }
   for (const room of keys) {
@@ -91,8 +95,17 @@ function renderRooms() {
   }
 }
 
-function renderChat() {
+function renderCenter() {
   el('chat-room').textContent = state.selected || '—';
+  el('tab-chat').classList.toggle('active', state.tab === 'chat');
+  el('tab-peek').classList.toggle('active', state.tab === 'peek');
+  const peek = state.tab === 'peek';
+  el('chat-view').classList.toggle('hidden', peek);
+  el('peek-view').classList.toggle('hidden', !peek);
+  if (peek) renderPeek(); else renderChat();
+}
+
+function renderChat() {
   const box = el('messages');
   const room = state.selected && state.rooms.get(state.selected);
   if (!room || !room.chat.length) { box.innerHTML = '<div class="empty">(aucun message)</div>'; return; }
@@ -102,9 +115,43 @@ function renderChat() {
   box.scrollTop = box.scrollHeight;
 }
 
+function renderPeek() {
+  const room = state.selected;
+  const others = othersOf(room);
+  const target = resolvePeek(room);
+  state.peekTarget = target;
+  const tg = el('peek-targets');
+  if (!others.length) {
+    tg.innerHTML = '<span class="muted">personne à observer dans cette room</span>';
+    el('peek').textContent = '';
+  } else {
+    tg.innerHTML = '';
+    for (const m of others) {
+      const b = document.createElement('button');
+      b.className = 'ptarget' + (m.name === target ? ' active' : '');
+      b.textContent = m.name;
+      b.onclick = () => { state.peekByRoom[room] = m.name; renderPeek(); };
+      tg.appendChild(b);
+    }
+  }
+  applyPeek(room, target);
+}
+
+// (Re)lance ou arrête le poll peek côté hub selon l'onglet / la room / la cible.
+function applyPeek(room, target) {
+  if (state.tab !== 'peek' || !room || !target) {
+    if (peekActive) { send({ cmd: 'peek-stop' }); peekActive = null; }
+    return;
+  }
+  if (peekActive && peekActive.room === room && peekActive.target === target) return; // déjà en cours
+  send({ cmd: 'peek-stop' });
+  el('peek').textContent = '…';
+  send({ cmd: 'peek', room, target });
+  peekActive = { room, target };
+}
+
 function renderRoster() {
-  const ul = el('roster');
-  ul.innerHTML = '';
+  const ul = el('roster'); ul.innerHTML = '';
   const room = state.selected && state.rooms.get(state.selected);
   if (!room || !room.roster.length) { ul.innerHTML = '<li class="empty">personne</li>'; return; }
   for (const m of room.roster) {
@@ -114,7 +161,7 @@ function renderRoster() {
     li.innerHTML = `<span class="dot ${live(m) ? 'active' : ''}" title="${live(m) ? 'connecté · actif' : 'connecté'}">●</span>
       <span class="name ${m.role === 'ai' ? 'ai' : ''}">${esc(m.name)}</span>
       <span class="role">${esc(m.role)}</span>`;
-    if (!mine) li.onclick = () => setPeek(m.name);
+    if (!mine) li.onclick = () => { state.peekByRoom[state.selected] = m.name; selectTab('peek'); };
     ul.appendChild(li);
   }
 }
@@ -137,24 +184,19 @@ function renderMyTerms() {
 function selectRoom(room) {
   if (state.selected === room) return;
   state.selected = room;
-  stopPeek();
+  if (peekActive) { send({ cmd: 'peek-stop' }); peekActive = null; } // re-scopé à la nouvelle room
   renderAll();
 }
-
-function setPeek(target) {
-  state.peekTarget = target;
-  el('peek-target').textContent = target;
-  el('peek').textContent = '…';
-  el('peek-wrap').classList.remove('hidden');
-  send({ cmd: 'peek', room: state.selected, target });
-}
-function stopPeek() {
-  if (state.peekTarget) send({ cmd: 'peek-stop' });
-  state.peekTarget = null;
-  el('peek-wrap').classList.add('hidden');
+function selectTab(tab) {
+  state.tab = tab;
+  if (tab !== 'peek' && peekActive) { send({ cmd: 'peek-stop' }); peekActive = null; }
+  renderCenter();
 }
 
 // --- Branchements UI ---
+el('tab-chat').onclick = () => selectTab('chat');
+el('tab-peek').onclick = () => selectTab('peek');
+
 el('say-form').addEventListener('submit', (e) => {
   e.preventDefault();
   const inp = el('say-input');
@@ -167,14 +209,10 @@ el('say-form').addEventListener('submit', (e) => {
   inp.value = '';
 });
 
-el('btn-open').onclick = () => {
-  if (!state.selected) return alert('Sélectionne une room.');
-  send({ cmd: 'open-terminal', room: state.selected });
-};
+el('btn-open').onclick = () => { if (!state.selected) return alert('Sélectionne une room.'); send({ cmd: 'open-terminal', room: state.selected }); };
 el('btn-newroom').onclick = () => {
   const room = (prompt('Nom de la nouvelle room :') || '').trim();
   if (room) { send({ cmd: 'open-terminal', room }); state.selected = room; getRoom(room); renderAll(); }
 };
-el('peek-stop').onclick = stopPeek;
 
 connect();

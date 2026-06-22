@@ -24,27 +24,33 @@
       </div>
     </section>
 
-    <!-- Centre : chat de la room sélectionnée -->
-    <section id="chat" class="panel">
-      <h2>#<span id="chat-room">—</span> · chat</h2>
-      <div id="messages"></div>
-      <form id="say-form">
-        <input id="say-input" autocomplete="off" placeholder="say…  (préfixe @nom pour cibler)" />
-        <button type="submit">Envoyer</button>
-      </form>
+    <!-- Centre : onglets chat / peek de la room sélectionnée -->
+    <section id="center" class="panel">
+      <div class="tabs">
+        <span class="roomlabel">#<span id="chat-room">—</span></span>
+        <button class="tab active" id="tab-chat" data-tab="chat">chat</button>
+        <button class="tab" id="tab-peek" data-tab="peek">peek</button>
+      </div>
+
+      <div id="chat-view">
+        <div id="messages"></div>
+        <form id="say-form">
+          <input id="say-input" autocomplete="off" placeholder="say…  (préfixe @nom pour cibler)" />
+          <button type="submit">Envoyer</button>
+        </form>
+      </div>
+
+      <div id="peek-view" class="hidden">
+        <div id="peek-targets"></div>
+        <pre id="peek"></pre>
+      </div>
     </section>
 
-    <!-- Droite : roster + peek -->
+    <!-- Droite : présence (clic sur un membre = peek de son écran) -->
     <section id="side" class="panel">
       <h2>Présence</h2>
       <ul id="roster"></ul>
-      <div id="peek-wrap" class="hidden">
-        <div class="peek-head">
-          <span>écran de <strong id="peek-target"></strong></span>
-          <button id="peek-stop" title="Arrêter">✕</button>
-        </div>
-        <pre id="peek"></pre>
-      </div>
+      <p class="hint">Clique une personne pour voir son écran (onglet peek).</p>
     </section>
   </main>
 
