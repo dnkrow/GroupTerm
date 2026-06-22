@@ -16,8 +16,11 @@ Tu lances `GroupTerm` au lieu de ton terminal habituel. Tu obtiens **ton shell n
 | `peek bob -n 100` | 100 dernières lignes d'une personne précise |
 | `say "message"` | Écrit le message **dans le terminal de l'autre** — il y apparaît comme une saisie, ce qui réveille son IA (préfixé `#` : sans IA lancée, c'est un commentaire inoffensif au prompt) |
 | `say --to bob "..."` | Cible une personne précise |
+| `say --all "..."` | Parle à **tout le monde** dans la room (diffusion volontaire) |
 | `chat` | Affiche l'historique propre de la conversation |
 | `who` | Liste qui est dans la room, avec son état (live / idle) |
+
+> **À 3 personnes ou plus**, un `say` **sans cible** est refusé (pour ne pas réveiller toutes les IA d'un coup) : précise `--to <nom>`, ou `--all` pour diffuser exprès. En tête-à-tête, `say "msg"` part directement vers l'autre. Dans le dashboard, une barre **« À : »** te laisse choisir le destinataire (ou « Tous »).
 
 Comme ce sont de **vraies commandes shell**, elles marchent pour toi comme pour une IA tournant dans le terminal : ton IA peut faire `peek` / `say` / `chat` / `who` d'elle-même.
 

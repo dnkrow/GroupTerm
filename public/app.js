@@ -9,6 +9,7 @@ const state = {
   tab: 'chat',             // 'chat' | 'peek'
   peekTarget: null,        // membre actuellement observé (dérivé de la room sélectionnée)
   peekByRoom: {},          // mémorise la cible peek choisie par room
+  sayToByRoom: {},         // destinataire say choisi par room ('all' ou un nom)
 };
 let peekActive = null;     // { room, target } en cours de poll côté hub
 
@@ -36,7 +37,7 @@ function handle(m) {
     const s = getRoom(m.room); s.roster = m.members || [];
     ensureSelection();
     renderRooms(); renderMyTerms();
-    if (m.room === state.selected) { renderRoster(); if (state.tab === 'peek') renderPeek(); }
+    if (m.room === state.selected) { renderRoster(); if (state.tab === 'peek') renderPeek(); else renderSayTo(); }
   } else if (m.type === 'chat-event') {
     const s = getRoom(m.room);
     s.chat.push({ from: m.from, role: m.role, text: m.text, time: m.time });
@@ -75,6 +76,17 @@ function resolvePeek(room) {
   const want = state.peekByRoom[room];
   return (want && others.some((m) => m.name === want)) ? want : others[0].name;
 }
+// Destinataire say résolu : 'all', un nom, ou null (personne). En 3+, défaut = 1 personne
+// (jamais 'all' par défaut, pour ne pas réveiller tout le monde par accident).
+function resolveSayTo(room) {
+  const others = othersOf(room);
+  if (!others.length) return null;
+  if (others.length === 1) return 'all';            // 1-on-1 : "tous" = cette personne
+  const want = state.sayToByRoom[room];
+  if (want === 'all') return 'all';
+  if (want && others.some((m) => m.name === want)) return want;
+  return others[0].name;                            // défaut dirigé
+}
 
 // --- Rendu ---
 function renderAll() { renderRooms(); renderRoster(); renderMyTerms(); renderCenter(); }
@@ -102,7 +114,27 @@ function renderCenter() {
   const peek = state.tab === 'peek';
   el('chat-view').classList.toggle('hidden', peek);
   el('peek-view').classList.toggle('hidden', !peek);
-  if (peek) renderPeek(); else renderChat();
+  if (peek) renderPeek(); else { renderChat(); renderSayTo(); }
+}
+
+// Barre "À :" — n'apparaît que s'il y a 2+ autres personnes (sinon pas de choix utile).
+function renderSayTo() {
+  const room = state.selected;
+  const box = el('say-to');
+  const others = othersOf(room);
+  if (others.length <= 1) { box.innerHTML = ''; return; }
+  const sel = resolveSayTo(room);
+  box.innerHTML = '<span class="muted">À :</span>';
+  const mk = (val, label) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'toopt' + (sel === val ? ' active' : '');
+    b.textContent = label;
+    b.onclick = () => { state.sayToByRoom[room] = val; renderSayTo(); };
+    box.appendChild(b);
+  };
+  for (const m of others) mk(m.name, m.name);
+  mk('all', 'Tous');
 }
 
 function renderChat() {
@@ -202,10 +234,19 @@ el('say-form').addEventListener('submit', (e) => {
   const inp = el('say-input');
   const raw = inp.value.trim();
   if (!raw || !state.selected) return;
-  let text = raw, target;
+  let text = raw, target, all = false;
   const mm = raw.match(/^@(\S+)\s+([\s\S]+)$/);
-  if (mm) { target = mm[1]; text = mm[2]; }
-  send({ cmd: 'say', room: state.selected, text, target });
+  if (mm) {
+    text = mm[2];
+    if (mm[1] === 'all' || mm[1] === 'tous') all = true; else target = mm[1];
+  } else {
+    const sel = resolveSayTo(state.selected);
+    if (sel === 'all' || sel === null) all = true; else target = sel;
+  }
+  const payload = { cmd: 'say', room: state.selected, text };
+  if (target) payload.target = target;
+  if (all) payload.all = true;
+  send(payload);
   inp.value = '';
 });
 

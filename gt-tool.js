@@ -32,13 +32,15 @@ if (cmd === 'peek') {
     }
   }
 } else if (cmd === 'say') {
-  // say [--to nom] <message...>
+  // say [--to nom | --all] <message...>
   const args = [...rest];
   const words = [];
   for (let i = 0; i < args.length; i++) {
     if (args[i] === '--to' || args[i] === '-t') {
       req.target = args[i + 1];
       i++;
+    } else if (args[i] === '--all' || args[i] === '-a') {
+      req.all = true;
     } else {
       words.push(args[i]);
     }

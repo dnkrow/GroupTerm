@@ -29,7 +29,7 @@ navigateur ◄─► gt-hub (PC A)                       gt-hub (PC B) ◄─►
 ## Protocole WebSocket (résumé)
 
 - Client membre → serveur : `register{name,role,room,cols,rows}`, `terminal{data}`, `resize{cols,rows}`.
-- Outil → serveur : `tool{cmd:'peek'|'say'|'chat'|'who'|'quit', room, from, target?, text?, n?}` → réponse `tool-result{ok,text}`. (`quit` → délivre `{type:'quit'}` au membre ciblé.)
+- Outil → serveur : `tool{cmd:'peek'|'say'|'chat'|'who'|'quit', room, from, target?, text?, n?, all?}` → réponse `tool-result{ok,text}`. (`quit` → délivre `{type:'quit'}` au membre ciblé. Pour `say` : à 2+ autres membres sans `target`, refusé sauf `all:true` — évite de réveiller toutes les IA.)
 - Watcher → serveur : `watch{room,name}` (TUI, une room) ou `watch{scope:'all',name}` (hub web, toutes les rooms).
 - Serveur → client membre : `deliver{from,text}` (un `say` à injecter), `quit{}` (fermeture demandée), `system{text}`.
 - Serveur → watcher : `snapshot{room,roster,chat}` (abonnement room), `rooms-snapshot{rooms:[{room,roster,chat}]}` (abonnement global), `roster{room,members:[{name,role,lastActivity}]}`, `chat-event{room,from,role,text,time}`.

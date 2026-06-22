@@ -63,6 +63,26 @@ async function run() {
   const lonelyOut = tool('peek', 'ghost'); // ghost n'est pas membre, alice+bob le sont -> 2 autres
   check(lonelyOut.includes('Plusieurs personnes') || lonelyOut.includes('précise un nom'), 'peek ambigu demande un nom');
 
+  // --- Ciblage obligatoire à 3+ personnes (évite de réveiller tout le monde) ---
+  const carol = await member('carol');
+  await wait(150);
+  const ambig = tool('say', 'alice', ['coucou']); // 2 autres (bob, carol), pas de cible
+  check(/Plusieurs personnes/.test(ambig), 'say sans cible à 3+ est refusé');
+
+  bob.inbox.length = 0; carol.inbox.length = 0;
+  const allOut = tool('say', 'alice', ['--all', 'hello', 'tous']);
+  check(/say -> /.test(allOut), 'say --all confirme l\'envoi');
+  await wait(300);
+  check(bob.inbox.some((m) => m.text === 'hello tous'), 'say --all livré à bob');
+  check(carol.inbox.some((m) => m.text === 'hello tous'), 'say --all livré à carol');
+
+  bob.inbox.length = 0; carol.inbox.length = 0;
+  tool('say', 'alice', ['--to', 'carol', 'perso']);
+  await wait(300);
+  check(carol.inbox.some((m) => m.text === 'perso'), 'say --to carol livré à carol');
+  check(!bob.inbox.some((m) => m.text === 'perso'), 'say --to carol NON livré à bob');
+  carol.ws.close();
+
   alice.ws.close();
   bob.ws.close();
   console.log(failures === 0 ? '\nTous les tests passent.' : `\n${failures} test(s) en échec.`);

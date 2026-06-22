@@ -73,6 +73,11 @@ button:hover { border-color: var(--accent); }
 .msg .from.ai { color: var(--ai); }
 .msg .from.human { color: var(--human); }
 .empty { color: var(--muted); padding: 12px; }
+#say-to { display: flex; align-items: center; gap: 6px; padding: 6px 8px 0; flex-wrap: wrap; }
+#say-to:empty { display: none; }
+.toopt { background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 12px; padding: 2px 10px; font: inherit; font-size: 13px; }
+.toopt:hover { border-color: var(--accent); }
+.toopt.active { border-color: var(--accent); color: var(--accent); }
 #say-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
 #say-input { flex: 1; background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font: inherit; }
 #say-input:focus { outline: none; border-color: var(--accent); }

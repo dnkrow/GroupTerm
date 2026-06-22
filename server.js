@@ -180,8 +180,15 @@ function handleTool(ws, msg) {
       if (!found) return send(ws, { type: 'tool-result', cmd, ok: false, text: `[say] "${msg.target}" introuvable.` });
       targets = [found];
     } else {
-      targets = otherMembers(room, from);
-      if (targets.length === 0) return send(ws, { type: 'tool-result', cmd, ok: false, text: '[say] Personne d\'autre dans la room.' });
+      const others = otherMembers(room, from);
+      if (others.length === 0) return send(ws, { type: 'tool-result', cmd, ok: false, text: '[say] Personne d\'autre dans la room.' });
+      // Plusieurs personnes + pas de cible : on refuse de réveiller tout le monde
+      // par accident. Il faut --to <nom>, ou --all pour diffuser volontairement.
+      if (others.length > 1 && !msg.all) {
+        const names = others.map((o) => o.meta.name).join(', ');
+        return send(ws, { type: 'tool-result', cmd, ok: false, text: `[say] Plusieurs personnes (${names}) : précise --to <nom>, ou --all pour parler à tout le monde. Ex: say --to ${others[0].meta.name} "..."` });
+      }
+      targets = others;
     }
     const selfMeta = findClientByName(room, from);
     pushTranscript(room, from, selfMeta ? selfMeta.meta.role : 'human', text);

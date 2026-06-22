@@ -75,6 +75,7 @@ function handleBrowser(m) {
   if (m.cmd === 'say') {
     const o = { type: 'tool', cmd: 'say', room: m.room, from: NAME, text: String(m.text || '') };
     if (m.target) o.target = m.target;
+    if (m.all) o.all = true;
     relaySend(o);
   } else if (m.cmd === 'peek') {
     startPeek(m.room, m.target);
