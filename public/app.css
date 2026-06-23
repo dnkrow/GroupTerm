@@ -99,6 +99,24 @@ button:hover { border-color: var(--accent); }
 #peek { margin: 0; padding: 8px 10px; overflow: auto; flex: 1; background: #000; color: #cfd8e3; font-size: 12px; white-space: pre; }
 .hidden { display: none !important; }
 
+/* Zone "Pour toi" */
+#forme { background: var(--panel); border-bottom: 1px solid var(--border); padding: 6px 14px 8px; }
+#forme.has-unread { background: rgba(88,166,255,.08); border-bottom-color: var(--accent); }
+.forme-head { display: flex; align-items: center; gap: 10px; }
+.forme-title { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#forme.has-unread .forme-title { color: var(--accent); }
+#forme-count { color: var(--accent); }
+#forme-clear { padding: 2px 8px; font-size: 12px; margin-left: auto; }
+#forme-list { list-style: none; margin: 6px 0 0; padding: 0; max-height: 132px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.forme-item { display: flex; align-items: baseline; gap: 8px; padding: 4px 8px; border-radius: 6px; cursor: pointer; }
+.forme-item:hover { background: var(--panel2); }
+.forme-item.unread { background: rgba(88,166,255,.12); }
+.forme-room { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+.forme-from { color: var(--ai); font-weight: 700; flex-shrink: 0; }
+.forme-text { flex: 1; word-break: break-word; color: var(--muted); }
+.forme-item.unread .forme-text { color: var(--text); }
+.forme-time { color: var(--muted); font-size: 12px; flex-shrink: 0; }
+
 /* My terminals */
 #myterms { display: flex; align-items: center; gap: 8px; padding: 7px 14px; border-top: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
 .chip { display: inline-flex; align-items: center; gap: 6px; background: var(--panel2); border: 1px solid var(--border); border-radius: 12px; padding: 3px 6px 3px 10px; }

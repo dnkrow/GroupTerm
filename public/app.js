@@ -11,6 +11,7 @@ const state = {
   peekByRoom: {},          // mémorise la cible peek choisie par room
   sayToByRoom: {},         // destinataire say choisi par room ('all' ou un nom)
   myTerms: [],             // terminaux lancés par CE hub : [{room, name, role}]
+  forMe: [],               // messages qui te mentionnent : [{room, from, text, time, read}]
 };
 let peekActive = null;     // { room, target } en cours de poll côté hub
 
@@ -32,6 +33,7 @@ function handle(m) {
   } else if (m.type === 'rooms-snapshot') {
     state.rooms = new Map();
     for (const r of m.rooms) state.rooms.set(r.room, { roster: r.roster || [], chat: r.chat || [] });
+    rebuildForMe();
     ensureSelection();
     renderAll();
   } else if (m.type === 'roster') {
@@ -43,6 +45,10 @@ function handle(m) {
     const s = getRoom(m.room);
     s.chat.push({ from: m.from, role: m.role, text: m.text, time: m.time });
     if (s.chat.length > 200) s.chat.shift();
+    if (isForMe(m.from, m.text)) {
+      state.forMe.push({ room: m.room, from: m.from, text: m.text, time: m.time, read: false });
+      renderForMe();
+    }
     if (m.room === state.selected && state.tab === 'chat') renderChat();
   } else if (m.type === 'peek') {
     if (state.tab === 'peek' && m.room === state.selected && m.target === state.peekTarget) {
@@ -71,6 +77,22 @@ const hhmm = (t) => { const d = new Date(t); return String(d.getHours()).padStar
 function esc(s) { return (s || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 function setRelay(ok) { const r = el('relay'); r.textContent = ok ? 'relais connecté' : 'relais déconnecté'; r.className = 'relay ' + (ok ? 'on' : 'off'); }
 
+// --- "Pour toi" : un message me concerne s'il mentionne mon nom (et n'est pas de moi) ---
+function isForMe(from, text) {
+  const me = (state.me || '').toLowerCase();
+  if (!me || me === '…' || from === state.me) return false;
+  return (text || '').toLowerCase().includes(me);
+}
+function rebuildForMe() {
+  const out = [];
+  for (const [room, v] of state.rooms) {
+    for (const e of (v.chat || [])) {
+      if (isForMe(e.from, e.text)) out.push({ room, from: e.from, text: e.text, time: e.time, read: false });
+    }
+  }
+  state.forMe = out;
+}
+
 // Membres de la room sélectionnée autres que moi (cibles peek possibles).
 function othersOf(room) { const r = room && state.rooms.get(room); return r ? r.roster.filter((m) => m.name !== state.me) : []; }
 // Cible peek résolue pour une room : mémorisée si encore présente, sinon le 1er autre.
@@ -93,7 +115,7 @@ function resolveSayTo(room) {
 }
 
 // --- Rendu ---
-function renderAll() { renderRooms(); renderRoster(); renderMyTerms(); renderCenter(); }
+function renderAll() { renderRooms(); renderRoster(); renderMyTerms(); renderCenter(); renderForMe(); }
 
 function renderRooms() {
   const ul = el('room-list'); ul.innerHTML = '';
@@ -223,8 +245,33 @@ function renderMyTerms() {
   }
 }
 
+function renderForMe() {
+  const sec = el('forme');
+  const box = el('forme-list');
+  const items = state.forMe;
+  if (!items.length) { sec.classList.add('hidden'); return; }
+  sec.classList.remove('hidden');
+  const unread = items.filter((i) => !i.read).length;
+  el('forme-count').textContent = unread ? `(${unread} non lu${unread > 1 ? 's' : ''})` : '';
+  sec.classList.toggle('has-unread', unread > 0);
+  box.innerHTML = '';
+  for (const it of items.slice(-25).reverse()) {
+    const li = document.createElement('li');
+    li.className = 'forme-item' + (it.read ? '' : ' unread');
+    li.innerHTML = `<span class="forme-room">#${esc(it.room)}</span>` +
+      `<span class="forme-from">${esc(it.from)}</span>` +
+      `<span class="forme-text">${esc(it.text)}</span>` +
+      `<span class="forme-time">${hhmm(it.time)}</span>`;
+    li.onclick = () => { it.read = true; selectRoom(it.room); selectTab('chat'); renderForMe(); };
+    box.appendChild(li);
+  }
+}
+
 // --- Actions ---
 function selectRoom(room) {
+  // en ouvrant une room, ses messages "pour toi" sont considérés lus
+  for (const it of state.forMe) if (it.room === room) it.read = true;
+  renderForMe();
   if (state.selected === room) return;
   state.selected = room;
   if (peekActive) { send({ cmd: 'peek-stop' }); peekActive = null; } // re-scopé à la nouvelle room
@@ -239,6 +286,7 @@ function selectTab(tab) {
 // --- Branchements UI ---
 el('tab-chat').onclick = () => selectTab('chat');
 el('tab-peek').onclick = () => selectTab('peek');
+el('forme-clear').onclick = () => { state.forMe.forEach((i) => { i.read = true; }); renderForMe(); };
 
 el('say-form').addEventListener('submit', (e) => {
   e.preventDefault();

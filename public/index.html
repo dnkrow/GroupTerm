@@ -13,6 +13,15 @@
     <div id="relay" class="relay off">relais…</div>
   </header>
 
+  <!-- Zone "Pour toi" : messages qui te mentionnent, toutes rooms confondues -->
+  <section id="forme" class="hidden">
+    <div class="forme-head">
+      <span class="forme-title">📥 Pour toi <span id="forme-count"></span></span>
+      <button id="forme-clear" title="Tout marquer comme lu">tout lu</button>
+    </div>
+    <ul id="forme-list"></ul>
+  </section>
+
   <main>
     <!-- Colonne gauche : rooms -->
     <section id="rooms" class="panel">

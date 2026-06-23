@@ -72,4 +72,7 @@ Les tests prennent `SERVER` en env (défaut `ws://localhost:4343`) — lance un 
 
 ## Pistes non faites
 
-Verrou de tour de parole strict, `wss://` + auth par token, ciblage multi-personnes plus riche.
+- Verrou de tour de parole strict, `wss://` + auth par token, ciblage multi-personnes plus riche.
+- **Zone « Pour toi » du hub (WIP non committé, dans `public/` — `git status` le montre).** Bandeau dashboard qui isole les messages te concernant (`#forme` dans `index.html`/`app.js`/`app.css`). **Mis de côté** car l'heuristique de détection (`isForMe` = le texte contient ton nom) est **trop large** : les agents te nomment dans presque chaque message → ~tout remonte (« 98 non lus »). À reprendre avec un **marqueur explicite** (ex. les agents interpellent l'humain avec `@<nom>`, et le dashboard ne filtre que ça). Soit le finir avec ce marqueur, soit `git checkout -- public/` pour l'enlever.
+
+**Validé en usage réel (2026-06-23) :** mode solo + mode orchestrateur tournés en conditions réelles — un binôme `cerveau`/`executant` (Claude Code en `bypassPermissions`) sur un vrai projet, et des **cellules de 3 agents autonomes** (`stratege`/`sceptique`/`chercheur`) qui débattent, se corrigent et produisent un livrable puis s'arrêtent. `recrute`/`libere`/`GT_INIT` fonctionnent de bout en bout. Supervision via le hub (`peek`/`chat`) + un `Monitor` côté Claude Code.
