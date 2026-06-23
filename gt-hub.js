@@ -30,6 +30,7 @@ const PUB = path.join(__dirname, 'public');
 // --- État partagé (pour servir aussi les onglets qui se (re)connectent) ---
 const roomsState = new Map();   // room => { roster:[], chat:[] }
 const browsers = new Set();     // sockets navigateur
+const launched = [];            // terminaux lancés par CE hub : [{room, name, role}]
 let relay = null;
 let relayConnected = false;
 let activePeek = null;          // { room, target }
@@ -62,11 +63,14 @@ function toBrowsers(msg) {
 function snapshotForBrowser() {
   return { type: 'rooms-snapshot', rooms: Array.from(roomsState, ([room, v]) => ({ room, roster: v.roster, chat: v.chat })) };
 }
+// Liste des terminaux lancés par ce hub (pour le pied de page "Mes terminaux").
+function sendMyTerms() { toBrowsers({ type: 'my-terms', terms: launched.slice() }); }
 
 wss.on('connection', (b) => {
   browsers.add(b);
   b.send(JSON.stringify({ type: 'hello', name: NAME, server: SERVER, connected: relayConnected }));
   b.send(JSON.stringify(snapshotForBrowser()));
+  b.send(JSON.stringify({ type: 'my-terms', terms: launched.slice() }));
   b.on('message', (raw) => { let m; try { m = JSON.parse(raw.toString()); } catch { return; } handleBrowser(m); });
   b.on('close', () => { browsers.delete(b); if (browsers.size === 0) stopPeek(); });
 });
@@ -82,9 +86,12 @@ function handleBrowser(m) {
   } else if (m.cmd === 'peek-stop') {
     stopPeek();
   } else if (m.cmd === 'open-terminal') {
-    openTerminal(m.room);
+    openTerminal(m.room, m.name, m.role);
   } else if (m.cmd === 'close-terminal') {
-    relaySend({ type: 'tool', cmd: 'quit', room: m.room, from: NAME, target: NAME });
+    const target = String(m.name || NAME).slice(0, 32);
+    relaySend({ type: 'tool', cmd: 'quit', room: m.room, from: NAME, target });
+    const i = launched.findIndex((t) => t.room === m.room && t.name === target);
+    if (i >= 0) { launched.splice(i, 1); sendMyTerms(); }
   }
 }
 
@@ -138,21 +145,30 @@ function connectRelay() {
 }
 
 // =============== Actions locales (ouvrir / le navigateur) ===============
-function openTerminal(room) {
+// Ouvre un vrai terminal gt.js sur cette machine. `name` permet d'ouvrir
+// PLUSIEURS terminaux distincts dans une même room (ex. deux Claude en solo :
+// claude-a et claude-b dans #solo) ; sans nom, on retombe sur le nom du hub.
+function openTerminal(room, name, role) {
   room = String(room || 'default').slice(0, 32).replace(/[^\w.\-]/g, '');
+  name = String(name || NAME).slice(0, 32).replace(/[^\w.\-]/g, '') || NAME;
+  role = role === 'ai' ? 'ai' : 'human';
   if (!room) return;
-  const env = { ...process.env, GT_SERVER: SERVER, GT_NAME: NAME, GT_ROOM: room, GT_ROLE: 'human' };
+  const env = { ...process.env, GT_SERVER: SERVER, GT_NAME: name, GT_ROOM: room, GT_ROLE: role };
   try {
     if (process.platform === 'win32') {
       // /c : quand node s'arrête (fermeture demandée), la fenêtre se referme.
-      spawn(`start "GroupTerm #${room}" cmd /c node "${GT}" ${NAME} ${room}`, { shell: true, cwd: CWD, env, detached: true, stdio: 'ignore' });
+      spawn(`start "GroupTerm ${name} #${room}" cmd /c node "${GT}" ${name} ${room} ${role}`, { shell: true, cwd: CWD, env, detached: true, stdio: 'ignore' });
     } else if (process.platform === 'darwin') {
-      const script = `tell application "Terminal" to do script "cd '${CWD}' && GT_SERVER='${SERVER}' GT_NAME='${NAME}' node '${GT}' ${NAME} ${room}"`;
+      const script = `tell application "Terminal" to do script "cd '${CWD}' && GT_SERVER='${SERVER}' GT_NAME='${name}' GT_ROLE='${role}' node '${GT}' ${name} ${room} ${role}"`;
       spawn('osascript', ['-e', script], { detached: true, stdio: 'ignore' });
     } else {
-      spawn('x-terminal-emulator', ['-e', `node ${GT} ${NAME} ${room}`], { cwd: CWD, env, detached: true, stdio: 'ignore' });
+      spawn('x-terminal-emulator', ['-e', `node ${GT} ${name} ${room} ${role}`], { cwd: CWD, env, detached: true, stdio: 'ignore' });
     }
   } catch (e) { console.error('[hub] ouverture terminal :', e.message); }
+  if (!launched.some((t) => t.room === room && t.name === name)) {
+    launched.push({ room, name, role });
+    sendMyTerms();
+  }
 }
 
 function openBrowser(url) {

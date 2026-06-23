@@ -10,6 +10,7 @@ const state = {
   peekTarget: null,        // membre actuellement observé (dérivé de la room sélectionnée)
   peekByRoom: {},          // mémorise la cible peek choisie par room
   sayToByRoom: {},         // destinataire say choisi par room ('all' ou un nom)
+  myTerms: [],             // terminaux lancés par CE hub : [{room, name, role}]
 };
 let peekActive = null;     // { room, target } en cours de poll côté hub
 
@@ -47,6 +48,9 @@ function handle(m) {
     if (state.tab === 'peek' && m.room === state.selected && m.target === state.peekTarget) {
       el('peek').textContent = m.text || '(écran vide)';
     }
+  } else if (m.type === 'my-terms') {
+    state.myTerms = m.terms || [];
+    renderMyTerms();
   }
 }
 
@@ -200,14 +204,21 @@ function renderRoster() {
 
 function renderMyTerms() {
   const box = el('myterms-list');
-  const mine = [...state.rooms.entries()].filter(([, v]) => v.roster.some((m) => m.name === state.me)).map(([room]) => room);
-  if (!mine.length) { box.innerHTML = '<span class="muted">aucun</span>'; return; }
+  // On n'affiche que les terminaux lancés par ce hub ET encore présents dans le
+  // roster de leur room (une fenêtre fermée à la main disparaît donc d'elle-même).
+  const present = (state.myTerms || []).filter((t) => {
+    const r = state.rooms.get(t.room);
+    return r && r.roster.some((m) => m.name === t.name);
+  });
+  if (!present.length) { box.innerHTML = '<span class="muted">aucun</span>'; return; }
   box.innerHTML = '';
-  for (const room of mine) {
+  for (const t of present) {
     const chip = document.createElement('span');
     chip.className = 'chip';
-    chip.innerHTML = `#${esc(room)} <button title="Fermer ce terminal">✕</button>`;
-    chip.querySelector('button').onclick = () => { if (confirm(`Fermer ton terminal dans #${room} ?`)) send({ cmd: 'close-terminal', room }); };
+    chip.innerHTML = `${esc(t.name)} <span class="muted">@ #${esc(t.room)}</span> <button title="Fermer ce terminal">✕</button>`;
+    chip.querySelector('button').onclick = () => {
+      if (confirm(`Fermer le terminal ${t.name} dans #${t.room} ?`)) send({ cmd: 'close-terminal', room: t.room, name: t.name });
+    };
     box.appendChild(chip);
   }
 }
@@ -251,6 +262,16 @@ el('say-form').addEventListener('submit', (e) => {
 });
 
 el('btn-open').onclick = () => { if (!state.selected) return alert('Sélectionne une room.'); send({ cmd: 'open-terminal', room: state.selected }); };
+// Terminal nommé : ouvre un terminal sous un nom au choix (ex. solo = deux Claude
+// dans la même room). Demande la room (pré-remplie) puis le nom du terminal.
+el('btn-open-named').onclick = () => {
+  const room = (prompt('Room pour ce terminal :', state.selected || 'solo') || '').trim();
+  if (!room) return;
+  const name = (prompt(`Nom de ce terminal dans #${room} :`, 'claude-a') || '').trim();
+  if (!name) return;
+  send({ cmd: 'open-terminal', room, name, role: 'ai' });
+  state.selected = room; getRoom(room); renderAll();
+};
 el('btn-newroom').onclick = () => {
   const room = (prompt('Nom de la nouvelle room :') || '').trim();
   if (room) { send({ cmd: 'open-terminal', room }); state.selected = room; getRoom(room); renderAll(); }

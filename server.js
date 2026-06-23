@@ -192,7 +192,10 @@ function handleTool(ws, msg) {
     }
     const selfMeta = findClientByName(room, from);
     pushTranscript(room, from, selfMeta ? selfMeta.meta.role : 'human', text);
-    for (const t of targets) send(t.ws, { type: 'deliver', from, text });
+    // `alone` : le destinataire est-il le SEUL visé ? (message direct vs diffusion)
+    // Permet au client d'afficher "de X" ou "de X (à tous)" → l'IA sait si on l'attend.
+    const alone = targets.length === 1;
+    for (const t of targets) send(t.ws, { type: 'deliver', from, text, alone });
     const names = targets.map((t) => t.meta.name).join(', ');
     return send(ws, { type: 'tool-result', cmd, ok: true, text: `[say -> ${names}] ${text}` });
   }
@@ -304,7 +307,9 @@ wss.on('connection', (ws) => {
     if (msg.type === 'peek') { handleTool(ws, { cmd: 'peek', room, from: meta.name, target: msg.target }); return; }
     if (msg.type === 'chat') {
       pushTranscript(room, meta.name, meta.role, String(msg.text || '').slice(0, 4000));
-      for (const o of otherMembers(room, meta.name)) send(o.ws, { type: 'deliver', from: meta.name, text: msg.text });
+      const others = otherMembers(room, meta.name);
+      const alone = others.length === 1;
+      for (const o of others) send(o.ws, { type: 'deliver', from: meta.name, text: msg.text, alone });
       return;
     }
     if (msg.type === 'who') {

@@ -75,13 +75,20 @@ function flush() {
 
 // File d'attente : sérialise les injections pour ne pas mélanger deux messages.
 let deliverChain = Promise.resolve();
-function injectPaste(text) {
+function injectPaste(from, text, alone) {
   return new Promise((resolve) => {
-    // Préfixe chaque ligne par "# " : si aucune IA ne tourne et que le message
-    // atterrit à un simple prompt (PowerShell/bash), c'est une ligne de commentaire
-    // → Entrée n'exécute rien, pas d'erreur. Claude Code, lui, le lit normalement.
-    // (Le "#" est ajouté seulement ici, à l'injection ; l'historique du chat reste propre.)
-    const commented = text.split(/\r\n|\r|\n/).map((l) => '# ' + l).join('\n');
+    // En-tête d'identification : le destinataire sait QUI parle et si le message
+    // lui est adressé en direct ou diffusé à plusieurs. Sans ça, deux IA qui
+    // collaborent reçoivent un texte anonyme et se perdent (à qui répondre ? qui
+    // parle ? est-ce une commande ?). Avec l'en-tête, c'est sans ambiguïté.
+    const who = from || 'quelqu\'un';
+    const header = `[GroupTerm] message de ${who}${alone === false ? ' (à tous)' : ''} :`;
+    // Préfixe "# " sur CHAQUE ligne (en-tête compris) : si aucune IA ne tourne et que
+    // le message atterrit à un simple prompt (PowerShell/bash), c'est une ligne de
+    // commentaire → Entrée n'exécute rien, pas d'erreur. Claude Code, lui, le lit
+    // normalement. (Le "#" et l'en-tête sont ajoutés seulement à l'injection ; le
+    // transcript du chat reste propre.)
+    const commented = [header, ...text.split(/\r\n|\r|\n/)].map((l) => '# ' + l).join('\n');
     // Collage entre crochets : insertion atomique reconnue par les TUI (Claude Code…)
     shell.write('\x1b[200~' + commented + '\x1b[201~');
     setTimeout(() => {
@@ -101,7 +108,7 @@ function connect() {
     let msg;
     try { msg = JSON.parse(raw.toString()); } catch { return; }
     if (msg.type === 'deliver') {
-      deliverChain = deliverChain.then(() => injectPaste(msg.text)).catch(() => {});
+      deliverChain = deliverChain.then(() => injectPaste(msg.from, msg.text, msg.alone)).catch(() => {});
     } else if (msg.type === 'quit') {
       // Fermeture demandée depuis le hub web : on coupe le shell et on sort.
       try { shell.kill(); } catch {}
