@@ -21,6 +21,10 @@ const NAME = process.env.GT_NAME || process.argv[2] || 'anonyme';
 const ROOM = process.env.GT_ROOM || process.argv[3] || 'default';
 const ROLE = process.env.GT_ROLE || process.argv[4] || 'human';
 const SHELL = process.platform === 'win32' ? 'powershell.exe' : process.platform === 'darwin' ? 'zsh' : 'bash';
+// Commande initiale optionnelle, tapée dans le shell une fois prêt (ex. démarrer
+// Claude Code briefé). Sert au "recrutement" d'agents : le terminal ouvert par la
+// commande `recrute` démarre directement l'IA sur sa mission, sans frappe humaine.
+const INIT = process.env.GT_INIT || '';
 
 // --- Génère les commandes peek/say/chat dans un dossier ajouté au PATH ---
 const RUNTIME_BIN = path.join(os.tmpdir(), 'groupterm', 'bin');
@@ -30,7 +34,7 @@ fs.mkdirSync(RUNTIME_BIN, { recursive: true });
 const TOOL = path.join(__dirname, 'gt-tool.js').replace(/\\/g, '/');
 
 function writeShims() {
-  for (const cmd of ['peek', 'say', 'chat', 'who']) {
+  for (const cmd of ['peek', 'say', 'chat', 'who', 'recrute', 'libere']) {
     // Variante cmd.exe / PowerShell
     fs.writeFileSync(
       path.join(RUNTIME_BIN, `${cmd}.cmd`),
@@ -49,6 +53,7 @@ writeShims();
 
 // --- Environnement du shell : contexte + PATH avec nos commandes ---
 const env = { ...process.env, GT_SERVER: SERVER, GT_ROOM: ROOM, GT_NAME: NAME, GT_ROLE: ROLE };
+delete env.GT_INIT; // consommé par CE process uniquement, pas propagé au shell enfant
 const pathKey = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH';
 env[pathKey] = RUNTIME_BIN + path.delimiter + (env[pathKey] || '');
 
@@ -60,6 +65,9 @@ const shell = pty.spawn(SHELL, [], {
   cwd: process.cwd(),
   env,
 });
+
+// Commande initiale (recrutement) : on la tape une fois le prompt prêt.
+if (INIT) setTimeout(() => { try { shell.write(INIT + '\r'); } catch {} }, 1500);
 
 // --- Connexion au serveur (diffusion de la sortie + réception des say) ---
 let ws;

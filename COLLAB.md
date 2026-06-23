@@ -14,6 +14,24 @@ empêche les IA de se perdre quand elles bossent ensemble.
 - `say --to <nom> "..."` — envoyer un message à une personne précise.
 - `say --all "..."` — parler à tout le monde (à 3+, le ciblage est obligatoire ; `--all` est explicite).
 - `chat` — relire l'historique des messages de la room.
+- `recrute <nom> [--yolo] "<mission>"` — **ouvrir un nouvel agent Claude** spécialisé, briefé
+  sur sa mission, dans ta room (il démarre tout seul). Défaut : mode *accept edits* ; `--yolo`
+  pour une autonomie totale (bypass permissions). Ex : `recrute design "palette + tokens du panier"`.
+- `libere <nom>` — fermer un agent que tu as recruté quand sa mission est finie.
+
+## Recruter des spécialistes (orchestration)
+
+Si tu es un agent **orchestrateur** (le « cerveau »), tu peux te constituer une équipe à la
+demande au lieu de tout faire toi-même :
+
+- Besoin d'une compétence ponctuelle (design, QA visuelle, backend, doc…) ? `recrute <nom> "<mission>"`.
+- Le spécialiste rejoint la room, lit son briefing (`.groupterm/agents/<nom>.md`) et démarre.
+- Tu le diriges comme l'exécutant : `say --to <nom> "..."`, tu vérifies avec `peek <nom>`.
+- Quand sa mission est bouclée : `libere <nom>`.
+
+Règles de l'orchestrateur : **un agent = une mission claire** ; ne recrute pas « au cas où »
+(chaque agent coûte une session) ; reste sous le plafond (`GT_MAX_AGENTS`, défaut 6) ; libère les
+agents inactifs. En général, **seul le cerveau recrute** — les exécutants implémentent.
 
 ## Reconnaître un message entrant
 
